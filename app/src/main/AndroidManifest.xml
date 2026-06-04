@@ -24,13 +24,23 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Schwab OAuth callback deep link -->
+            <!-- Schwab OAuth callback: HTTPS App Links (verified = no chooser dialog) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="com.schwabtrader.app"
+                    android:scheme="https"
+                    android:host="danielbouless.github.io"
+                    android:pathPrefix="/Claude-Trading-Phone-App/oauth" />
+            </intent-filter>
+            <!-- Fallback custom scheme: GitHub Pages oauth.html bounces here when App Links unverified -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="schwabtrader"
                     android:host="oauth"
                     android:path="/callback" />
             </intent-filter>

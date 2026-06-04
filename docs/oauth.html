@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Schwab Trader – Connecting…</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      text-align: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 32px 28px;
+      max-width: 380px;
+      width: 100%;
+    }
+    h1 { font-size: 1.3rem; margin: 0 0 8px; }
+    p  { color: #8b949e; font-size: 0.95rem; margin: 0 0 24px; }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #30363d;
+      border-top-color: #58a6ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 24px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn {
+      display: inline-block;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 22px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .error { color: #f85149; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner" id="spinner"></div>
+    <h1>Connecting Schwab account…</h1>
+    <p id="msg">Returning you to the app automatically.</p>
+    <a id="manual-btn" class="btn" style="display:none">Open Schwab Trader</a>
+  </div>
+
+  <script>
+    (function () {
+      var params  = new URLSearchParams(window.location.search);
+      var code    = params.get('code');
+      var state   = params.get('state');
+      var msgEl   = document.getElementById('msg');
+      var btnEl   = document.getElementById('manual-btn');
+      var spinner = document.getElementById('spinner');
+
+      if (!code) {
+        spinner.style.display = 'none';
+        msgEl.innerHTML = '<span class="error">No authorisation code received. Please try connecting again from the app.</span>';
+        return;
+      }
+
+      // Build the fallback custom-scheme URI that the Android app listens on
+      var deepLink = 'schwabtrader://oauth/callback'
+        + '?code='  + encodeURIComponent(code)
+        + '&state=' + encodeURIComponent(state || '');
+
+      // Attempt immediate redirect; show manual button after 2 s if the app
+      // didn't intercept it (e.g. App Links not yet verified on this device)
+      window.location.href = deepLink;
+
+      setTimeout(function () {
+        spinner.style.display  = 'none';
+        msgEl.textContent      = 'If the app didn\'t open automatically, tap the button below.';
+        btnEl.href             = deepLink;
+        btnEl.style.display    = 'inline-block';
+      }, 2000);
+    })();
+  </script>
+</body>
+</html>

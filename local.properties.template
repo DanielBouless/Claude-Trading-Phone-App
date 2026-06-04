@@ -6,5 +6,7 @@ sdk.dir=/path/to/your/Android/sdk
 
 # Schwab API credentials
 # Obtain these from https://developer.schwab.com
+# Use this exact callback URL when registering your app on the Schwab developer portal:
+#   https://danielbouless.github.io/Claude-Trading-Phone-App/oauth
 SCHWAB_CLIENT_ID=your_schwab_client_id_here
 SCHWAB_CLIENT_SECRET=your_schwab_client_secret_here

@@ -49,7 +49,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         val data = intent?.data ?: return
-        if (data.scheme == "com.schwabtrader.app" && data.host == "oauth") {
+        val isAppLink = data.scheme == "https" &&
+            data.host == "danielbouless.github.io" &&
+            data.path?.startsWith("/Claude-Trading-Phone-App/oauth") == true
+        val isFallbackScheme = data.scheme == "schwabtrader" && data.host == "oauth"
+        if (isAppLink || isFallbackScheme) {
             pendingOAuthCode = data.getQueryParameter("code")
             pendingOAuthState = data.getQueryParameter("state")
         }

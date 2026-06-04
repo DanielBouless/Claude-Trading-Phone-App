@@ -40,7 +40,7 @@ android {
             "SCHWAB_CLIENT_SECRET",
             "\"${localProperties.getProperty("SCHWAB_CLIENT_SECRET", "")}\""
         )
-        buildConfigField("String", "SCHWAB_REDIRECT_URI", "\"com.schwabtrader.app://oauth/callback\"")
+        buildConfigField("String", "SCHWAB_REDIRECT_URI", "\"https://danielbouless.github.io/Claude-Trading-Phone-App/oauth\"")
         buildConfigField("String", "SCHWAB_AUTH_BASE_URL", "\"https://api.schwabapi.com/v1/\"")
         buildConfigField("String", "SCHWAB_MARKET_DATA_BASE_URL", "\"https://api.schwabapi.com/marketdata/v1/\"")
         buildConfigField("String", "SCHWAB_TRADER_BASE_URL", "\"https://api.schwabapi.com/trader/v1/\"")
