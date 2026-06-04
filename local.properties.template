@@ -1,0 +1,10 @@
+# Copy this file to local.properties and fill in your actual values.
+# DO NOT commit local.properties to version control.
+
+# Android SDK path (set automatically by Android Studio)
+sdk.dir=/path/to/your/Android/sdk
+
+# Schwab API credentials
+# Obtain these from https://developer.schwab.com
+SCHWAB_CLIENT_ID=your_schwab_client_id_here
+SCHWAB_CLIENT_SECRET=your_schwab_client_secret_here

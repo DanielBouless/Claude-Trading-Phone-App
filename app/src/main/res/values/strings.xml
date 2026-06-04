@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Schwab Trader</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="connect_schwab_account">Connect Schwab Account</string>
+    <string name="portfolio_dashboard">Portfolio Dashboard</string>
+    <string name="stock_screener">Stock Screener</string>
+    <string name="place_order">Place Order</string>
+    <string name="total_value">Total Value</string>
+    <string name="day_gain_loss">Day Gain/Loss</string>
+    <string name="loading">Loading…</string>
+    <string name="error_generic">Something went wrong. Please try again.</string>
+    <string name="error_network">Network error. Check your connection.</string>
+    <string name="error_auth">Authentication failed. Please sign in again.</string>
+    <string name="error_schwab_not_connected">Schwab account not connected.</string>
+    <string name="run_screener">Run Screener</string>
+    <string name="one_year_high">1Y High</string>
+    <string name="three_year_high">3Y High</string>
+    <string name="five_year_high">5Y High</string>
+    <string name="sp500">S&amp;P 500</string>
+    <string name="nasdaq">NASDAQ</string>
+    <string name="dow">DOW</string>
+    <string name="outperformance_threshold">Min Outperformance</string>
+    <string name="buy">Buy</string>
+    <string name="market_order">Market</string>
+    <string name="limit_order">Limit</string>
+    <string name="quantity">Quantity</string>
+    <string name="limit_price">Limit Price</string>
+    <string name="estimated_cost">Estimated Cost</string>
+    <string name="confirm_order">Confirm Order</string>
+    <string name="cancel">Cancel</string>
+    <string name="order_placed_success">Order placed successfully!</string>
+    <string name="schwab_connect_title">Connect Your Schwab Account</string>
+    <string name="schwab_connect_description">To access your portfolio and place trades, you need to connect your Charles Schwab account using OAuth 2.0 authentication. Your credentials are never stored by this app.</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="refresh">Refresh</string>
+    <string name="account_selector">Select Account</string>
+    <string name="current_price">Current Price</string>
+    <string name="from_high">From High</string>
+    <string name="outperformance">Outperformance vs Index</string>
+</resources>
