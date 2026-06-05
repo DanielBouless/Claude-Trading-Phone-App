@@ -33,9 +33,7 @@ class LoginViewModel @Inject constructor(
     val isLoggedIn: Boolean get() = authRepository.isLoggedIn
     val isSchwabConnected: Boolean get() = authRepository.isSchwabConnected
 
-    // Web client ID from google-services.json - this should be the web OAuth client ID
-    // not the Android client ID, for Firebase Auth to work properly
-    val webClientId: String = "YOUR_WEB_CLIENT_ID" // Replace with actual web client ID from Firebase console
+    val webClientId: String = "602334916747-kg8tf56v74ovar5p4fm8fbtcopjrpe9m.apps.googleusercontent.com"
 
     fun signInWithGoogle(launcher: ActivityResultLauncher<Intent>) {
         _uiState.value = LoginUiState.Loading
