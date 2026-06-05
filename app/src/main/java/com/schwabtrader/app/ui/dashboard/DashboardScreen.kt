@@ -34,21 +34,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.google.accompanist.swiperefresh.SwipeRefresh
+import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import com.schwabtrader.app.data.repository.Portfolio
 import com.schwabtrader.app.data.repository.PortfolioPosition
 import com.schwabtrader.app.ui.theme.AccentBlue
@@ -72,19 +70,8 @@ fun DashboardScreen(
     onSignOut: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val pullToRefreshState = rememberPullToRefreshState()
-
-    if (pullToRefreshState.isRefreshing) {
-        LaunchedEffect(true) {
-            viewModel.refreshPortfolio()
-        }
-    }
-
-    LaunchedEffect(uiState) {
-        if (uiState !is DashboardUiState.Loading) {
-            pullToRefreshState.endRefresh()
-        }
-    }
+    val isLoading = uiState is DashboardUiState.Loading
+    val swipeRefreshState = rememberSwipeRefreshState(isRefreshing = isLoading)
 
     Scaffold(
         topBar = {
@@ -107,18 +94,19 @@ fun DashboardScreen(
                         Icon(Icons.Default.Logout, contentDescription = "Sign Out", tint = TextSecondary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
+                colors = TopAppBarDefaults.smallTopAppBarColors(
                     containerColor = DarkBackground
                 )
             )
         },
         containerColor = DarkBackground
     ) { innerPadding ->
-        Box(
+        SwipeRefresh(
+            state = swipeRefreshState,
+            onRefresh = { viewModel.refreshPortfolio() },
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .nestedScroll(pullToRefreshState.nestedScrollConnection)
         ) {
             when (val state = uiState) {
                 is DashboardUiState.Loading -> {
@@ -149,13 +137,6 @@ fun DashboardScreen(
 
                 else -> {}
             }
-
-            PullToRefreshContainer(
-                state = pullToRefreshState,
-                modifier = Modifier.align(Alignment.TopCenter),
-                containerColor = CardBackground,
-                contentColor = AccentBlue
-            )
         }
     }
 }

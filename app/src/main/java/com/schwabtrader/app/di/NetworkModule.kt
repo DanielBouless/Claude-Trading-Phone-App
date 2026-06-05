@@ -86,13 +86,15 @@ object NetworkModule {
                             )
                             .build()
 
-                        val refreshResponse = chain.call().clone().proceed(refreshRequest)
+                        val refreshResponse = OkHttpClient().newCall(refreshRequest).execute()
                         if (refreshResponse.isSuccessful) {
                             val body = refreshResponse.body?.string()
                             refreshResponse.close()
                             if (body != null) {
                                 val gson = com.google.gson.Gson()
-                                val tokenResponse = gson.fromJson(body, com.schwabtrader.app.data.api.models.SchwabTokenResponse::class.java)
+                                val tokenResponse = gson.fromJson<com.schwabtrader.app.data.api.models.SchwabTokenResponse>(
+                                    body, com.schwabtrader.app.data.api.models.SchwabTokenResponse::class.java
+                                )
                                 secureStorage.saveSchwabTokens(
                                     accessToken = tokenResponse.accessToken,
                                     refreshToken = tokenResponse.refreshToken,
