@@ -46,6 +46,23 @@ data class ScreenerProgress(
     val matches: List<ScreenedStock>
 )
 
+data class WilliamsDmiResult(
+    val symbol: String,
+    val companyName: String,
+    val currentPrice: Double,
+    val williamsRCurrent: Double,
+    val williamsRPeriod: Int,
+    val plusDI: Double,
+    val minusDI: Double,
+    val dmiPeriod: Int
+)
+
+data class WilliamsDmiProgress(
+    val processedCount: Int,
+    val totalCount: Int,
+    val matches: List<WilliamsDmiResult>
+)
+
 data class PeerStock(
     val symbol: String,
     val oneYearReturn: Double,
@@ -772,6 +789,197 @@ class MarketDataRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    // ─── Williams DMI Screener ────────────────────────────────────────────────
+
+    fun screenWilliamsDmi(index: IndexType): Flow<WilliamsDmiProgress> = flow {
+        val stocks = stocksForIndex(index)
+        val total = stocks.size
+        val results = mutableListOf<WilliamsDmiResult>()
+        coroutineScope {
+            val deferreds = stocks.map { symbol ->
+                async { semaphore.withPermit { screenWilliamsDmiSingle(symbol) } }
+            }
+            deferreds.forEachIndexed { i, deferred ->
+                val result = runCatching { deferred.await() }.getOrNull()
+                if (result != null) results.add(result)
+                emit(WilliamsDmiProgress(i + 1, total, results.toList()))
+            }
+        }
+    }
+
+    private suspend fun screenWilliamsDmiSingle(symbol: String): WilliamsDmiResult? {
+        val history = runCatching {
+            marketDataService.getPriceHistory(symbol, "year", 1, "daily", 1)
+        }.getOrNull() ?: return null
+
+        val candles = history.candles
+        if (candles.size < 30) return null
+
+        val wrPeriod  = findOptimalWilliamsRPeriod(candles)
+        val dmiPeriod = findOptimalDmiPeriod(candles)
+
+        val wr = calculateWilliamsR(candles, wrPeriod)
+        if (wr.size < 4) return null
+
+        // Must have touched oversold (≤ -80) within last 3 candles
+        if (wr.takeLast(3).none { it <= -80.0 }) return null
+
+        val (plusDIList, minusDIList) = calculateDMI(candles, dmiPeriod)
+        if (plusDIList.isEmpty() || minusDIList.isEmpty()) return null
+
+        // +DI must currently be above -DI (bullish momentum confirmed)
+        val currentPlusDI  = plusDIList.last()
+        val currentMinusDI = minusDIList.last()
+        if (currentPlusDI <= currentMinusDI) return null
+
+        val currentPrice = candles.last().close
+        if (currentPrice <= 0) return null
+
+        val quoteDetail = runCatching {
+            marketDataService.getQuotes(symbols = symbol)
+        }.getOrNull()?.get(symbol)
+
+        return WilliamsDmiResult(
+            symbol          = symbol,
+            companyName     = quoteDetail?.description?.takeIf { it.isNotBlank() } ?: symbol,
+            currentPrice    = currentPrice,
+            williamsRCurrent = wr.last(),
+            williamsRPeriod = wrPeriod,
+            plusDI          = currentPlusDI,
+            minusDI         = currentMinusDI,
+            dmiPeriod       = dmiPeriod
+        )
+    }
+
+    // Williams %R: range 0 (overbought) to -100 (oversold)
+    private fun calculateWilliamsR(candles: List<Candle>, period: Int): List<Double> {
+        if (candles.size < period) return emptyList()
+        return (period - 1 until candles.size).map { i ->
+            val slice = candles.subList(i - period + 1, i + 1)
+            val high  = slice.maxOf { it.high }
+            val low   = slice.minOf { it.low }
+            val close = candles[i].close
+            if (high == low) -50.0 else ((high - close) / (high - low)) * -100.0
+        }
+    }
+
+    // DMI via Wilder's smoothing; returns (+DI list, -DI list)
+    private fun calculateDMI(candles: List<Candle>, period: Int): Pair<List<Double>, List<Double>> {
+        if (candles.size < period + 2) return Pair(emptyList(), emptyList())
+
+        val trList     = mutableListOf<Double>()
+        val plusDMList = mutableListOf<Double>()
+        val minusDMList = mutableListOf<Double>()
+
+        for (i in 1 until candles.size) {
+            val c    = candles[i]
+            val prev = candles[i - 1]
+            trList.add(maxOf(c.high - c.low, abs(c.high - prev.close), abs(c.low - prev.close)))
+            val upMove   = c.high - prev.high
+            val downMove = prev.low - c.low
+            plusDMList.add(if (upMove > downMove && upMove > 0.0) upMove else 0.0)
+            minusDMList.add(if (downMove > upMove && downMove > 0.0) downMove else 0.0)
+        }
+
+        fun wilderSmooth(data: List<Double>): List<Double> {
+            if (data.size < period) return emptyList()
+            val out = mutableListOf<Double>()
+            var sum = data.take(period).sum()
+            out.add(sum)
+            for (i in period until data.size) {
+                sum = sum - sum / period + data[i]
+                out.add(sum)
+            }
+            return out
+        }
+
+        val smoothTR      = wilderSmooth(trList)
+        val smoothPlusDM  = wilderSmooth(plusDMList)
+        val smoothMinusDM = wilderSmooth(minusDMList)
+
+        val plusDI  = smoothPlusDM.zip(smoothTR).map  { (dm, tr) -> if (tr > 0) 100.0 * dm / tr else 0.0 }
+        val minusDI = smoothMinusDM.zip(smoothTR).map { (dm, tr) -> if (tr > 0) 100.0 * dm / tr else 0.0 }
+        return Pair(plusDI, minusDI)
+    }
+
+    // Returns indices of candles that are local lows (low < all neighbors within 'n')
+    private fun findLocalLows(candles: List<Candle>, n: Int = 3): List<Int> {
+        val indices = mutableListOf<Int>()
+        for (i in n until candles.size - n) {
+            val low = candles[i].low
+            if ((1..n).all { d -> candles[i - d].low >= low && candles[i + d].low >= low })
+                indices.add(i)
+        }
+        return indices
+    }
+
+    // Returns indices of candles that are local highs (high > all neighbors within 'n')
+    private fun findLocalHighs(candles: List<Candle>, n: Int = 3): List<Int> {
+        val indices = mutableListOf<Int>()
+        for (i in n until candles.size - n) {
+            val high = candles[i].high
+            if ((1..n).all { d -> candles[i - d].high <= high && candles[i + d].high <= high })
+                indices.add(i)
+        }
+        return indices
+    }
+
+    // Find the Williams %R period (5–30) whose oversold touches best align with price local lows
+    private fun findOptimalWilliamsRPeriod(candles: List<Candle>): Int {
+        if (candles.size < 20) return 14
+        val localLows  = findLocalLows(candles, 3)
+        val localHighs = findLocalHighs(candles, 3)
+        var bestPeriod = 14
+        var bestScore  = -1
+        for (period in 5..30) {
+            val wr = calculateWilliamsR(candles, period)
+            if (wr.isEmpty()) continue
+            val offset = period - 1
+            var score = 0
+            for (li in localLows) {
+                val wi = li - offset
+                if (wi >= 0 && wi < wr.size &&
+                    (-1..1).any { d -> (wi + d).let { it >= 0 && it < wr.size && wr[it] <= -80.0 } })
+                    score += 2
+            }
+            for (hi in localHighs) {
+                val wi = hi - offset
+                if (wi >= 0 && wi < wr.size &&
+                    (-1..1).any { d -> (wi + d).let { it >= 0 && it < wr.size && wr[it] >= -20.0 } })
+                    score += 1
+            }
+            if (score > bestScore) { bestScore = score; bestPeriod = period }
+        }
+        return bestPeriod
+    }
+
+    // Find the DMI period (7–25) whose +DI/-DI crossovers best align with price local highs/lows
+    private fun findOptimalDmiPeriod(candles: List<Candle>): Int {
+        if (candles.size < 20) return 14
+        val lowSet  = findLocalLows(candles, 3).toSet()
+        val highSet = findLocalHighs(candles, 3).toSet()
+        var bestPeriod = 14
+        var bestScore  = -1
+        for (period in 7..25) {
+            val (plusDI, minusDI) = calculateDMI(candles, period)
+            if (plusDI.size < 2) continue
+            val candleOffset = period  // DMI[0] ↔ candles[period]
+            var score = 0
+            for (i in 1 until plusDI.size) {
+                val candleIdx = candleOffset + i
+                val prevBull  = plusDI[i - 1] > minusDI[i - 1]
+                val currBull  = plusDI[i]     > minusDI[i]
+                if (!prevBull && currBull) {  // golden cross → should align with low
+                    if ((candleIdx - 3..candleIdx + 3).any { it in lowSet }) score += 2
+                } else if (prevBull && !currBull) {  // death cross → should align with high
+                    if ((candleIdx - 3..candleIdx + 3).any { it in highSet }) score += 1
+                }
+            }
+            if (score > bestScore) { bestScore = score; bestPeriod = period }
+        }
+        return bestPeriod
     }
 
     private fun calculateRSI(closes: List<Double>, period: Int): Double {

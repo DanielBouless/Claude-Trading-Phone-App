@@ -38,12 +38,19 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,6 +62,7 @@ import com.schwabtrader.app.data.repository.HighPeriod
 import com.schwabtrader.app.data.repository.IndexType
 import com.schwabtrader.app.data.repository.ScreenedStock
 import com.schwabtrader.app.data.repository.ScreenerCriteria
+import com.schwabtrader.app.data.repository.WilliamsDmiResult
 import com.schwabtrader.app.ui.theme.AccentBlue
 import com.schwabtrader.app.ui.theme.CardBackground
 import com.schwabtrader.app.ui.theme.DarkBackground
@@ -69,42 +77,98 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenerScreen(
-    viewModel: ScreenerViewModel = hiltViewModel(),
+    highBreakoutViewModel: ScreenerViewModel = hiltViewModel(),
+    williamsDmiViewModel: WilliamsDmiViewModel = hiltViewModel(),
     onNavigateToOrder: (symbol: String, accountHash: String) -> Unit,
     onNavigateToDetail: (symbol: String) -> Unit,
+    onConnectSchwab: () -> Unit
+) {
+    var selectedTab by remember { mutableStateOf(0) }
+    val tabs = listOf("High Breakout", "Williams DMI")
+
+    Scaffold(
+        topBar = {
+            Column {
+                TopAppBar(
+                    title = { Text("Stock Screener", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                    colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = DarkBackground)
+                )
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = DarkBackground,
+                    contentColor = AccentBlue,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.Indicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                            color = AccentBlue
+                        )
+                    }
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = selectedTab == index,
+                            onClick = { selectedTab = index },
+                            text = {
+                                Text(
+                                    title,
+                                    color = if (selectedTab == index) AccentBlue else TextSecondary,
+                                    fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+        },
+        containerColor = DarkBackground
+    ) { innerPadding ->
+        when (selectedTab) {
+            0 -> HighBreakoutContent(
+                viewModel = highBreakoutViewModel,
+                innerPadding = innerPadding,
+                onNavigateToDetail = onNavigateToDetail,
+                onNavigateToOrder = onNavigateToOrder,
+                onConnectSchwab = onConnectSchwab
+            )
+            1 -> WilliamsDmiContent(
+                viewModel = williamsDmiViewModel,
+                innerPadding = innerPadding,
+                onNavigateToDetail = onNavigateToDetail,
+                onNavigateToOrder = onNavigateToOrder,
+                onConnectSchwab = onConnectSchwab
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HighBreakoutContent(
+    viewModel: ScreenerViewModel,
+    innerPadding: androidx.compose.foundation.layout.PaddingValues,
+    onNavigateToDetail: (String) -> Unit,
+    onNavigateToOrder: (String, String) -> Unit,
     onConnectSchwab: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val criteria by viewModel.criteria.collectAsState()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Stock Screener", color = TextPrimary, fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = DarkBackground)
-            )
-        },
-        containerColor = DarkBackground
-    ) { innerPadding ->
-        when (val state = uiState) {
-            is ScreenerUiState.NotConnected -> {
-                NotConnectedState(onConnectSchwab = onConnectSchwab)
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    item {
-                        ScreenerFiltersSection(
-                            criteria = criteria,
-                            onToggleHighPeriod = { viewModel.toggleHighPeriod(it) },
-                            onSetIndex = { viewModel.setIndex(it) },
-                            onSetOutperformance = { viewModel.setMinOutperformance(it) }
-                        )
-                    }
+    when (val state = uiState) {
+        is ScreenerUiState.NotConnected -> NotConnectedState(onConnectSchwab = onConnectSchwab)
+        else -> {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                item {
+                    ScreenerFiltersSection(
+                        criteria = criteria,
+                        onToggleHighPeriod = { viewModel.toggleHighPeriod(it) },
+                        onSetIndex = { viewModel.setIndex(it) },
+                        onSetOutperformance = { viewModel.setMinOutperformance(it) }
+                    )
+                }
 
                     // Action button row
                     item {
@@ -280,6 +344,336 @@ fun ScreenerScreen(
                     }
 
                     item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WilliamsDmiContent(
+    viewModel: WilliamsDmiViewModel,
+    innerPadding: androidx.compose.foundation.layout.PaddingValues,
+    onNavigateToDetail: (String) -> Unit,
+    onNavigateToOrder: (String, String) -> Unit,
+    onConnectSchwab: () -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    val selectedIndex by viewModel.index.collectAsState()
+
+    when (val state = uiState) {
+        is WilliamsDmiUiState.NotConnected -> NotConnectedState(onConnectSchwab = onConnectSchwab)
+        else -> {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                // Index selector
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = CardBackground),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.FilterList, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Williams %R + DMI Criteria", style = MaterialTheme.typography.titleSmall, color = TextPrimary, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Adaptive periods auto-tuned per stock", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("• Williams %R ≤ -80 within last 3 candles", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Text("• +DI > -DI (bullish DMI crossover confirmed)", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Universe", style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                IndexType.values().forEach { index ->
+                                    FilterChip(
+                                        selected = selectedIndex == index,
+                                        onClick = { viewModel.setIndex(index) },
+                                        label = { Text(index.displayName) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = AccentBlue,
+                                            selectedLabelColor = Color.White,
+                                            containerColor = SurfaceVariant,
+                                            labelColor = TextSecondary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Action button
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        when (state) {
+                            is WilliamsDmiUiState.Loading, is WilliamsDmiUiState.Running -> {
+                                Button(
+                                    onClick = { viewModel.stopScreener() },
+                                    modifier = Modifier.weight(1f).height(52.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = LossRed)
+                                ) {
+                                    Icon(Icons.Default.Stop, contentDescription = null, tint = Color.White)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Stop Search", fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            is WilliamsDmiUiState.Success -> {
+                                Button(
+                                    onClick = { viewModel.runScreener() },
+                                    modifier = Modifier.weight(1f).height(52.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = null, tint = Color.White)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("New Search", fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                            else -> {
+                                Button(
+                                    onClick = { viewModel.runScreener() },
+                                    modifier = Modifier.weight(1f).height(52.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                                ) {
+                                    Icon(Icons.Default.Search, contentDescription = null, tint = Color.White)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Run Screener", fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                // State content
+                when (state) {
+                    is WilliamsDmiUiState.Loading -> {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(color = AccentBlue)
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text("Analyzing price structure…", color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+                                    Text("Auto-tuning periods per stock", color = TextSecondary.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+
+                    is WilliamsDmiUiState.Running -> {
+                        item {
+                            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(
+                                        "Screened ${state.processedCount} of ${state.totalCount} stocks",
+                                        color = TextSecondary,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        "${state.results.size} match${if (state.results.size != 1) "es" else ""}",
+                                        color = if (state.results.isNotEmpty()) GainGreen else TextSecondary,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = state.processedCount.toFloat() / state.totalCount.coerceAtLeast(1),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = AccentBlue,
+                                    trackColor = SurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+                        }
+                        if (state.results.isNotEmpty()) {
+                            item {
+                                Text(
+                                    "Results so far (${state.results.size})",
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            items(state.results) { result ->
+                                WilliamsDmiResultCard(
+                                    result = result,
+                                    onViewDetails = { onNavigateToDetail(result.symbol) },
+                                    onBuy = { onNavigateToOrder(result.symbol, "") }
+                                )
+                            }
+                        }
+                    }
+
+                    is WilliamsDmiUiState.Success -> {
+                        if (state.results.isEmpty()) {
+                            item {
+                                Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                    Text(
+                                        "No stocks matched the Williams DMI criteria.\nTry a different universe.",
+                                        color = TextSecondary,
+                                        textAlign = TextAlign.Center,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        } else {
+                            item {
+                                Text(
+                                    "${state.results.size} stocks found — tap any to view details",
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            items(state.results) { result ->
+                                WilliamsDmiResultCard(
+                                    result = result,
+                                    onViewDetails = { onNavigateToDetail(result.symbol) },
+                                    onBuy = { onNavigateToOrder(result.symbol, "") }
+                                )
+                            }
+                        }
+                    }
+
+                    is WilliamsDmiUiState.Error -> {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("Error running screener", color = LossRed, style = MaterialTheme.typography.titleMedium)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(state.message, color = TextSecondary, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+                                }
+                            }
+                        }
+                    }
+
+                    else -> {}
+                }
+
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WilliamsDmiResultCard(
+    result: WilliamsDmiResult,
+    onViewDetails: () -> Unit,
+    onBuy: () -> Unit
+) {
+    val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.US)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { onViewDetails() },
+        colors = CardDefaults.cardColors(containerColor = CardBackground),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(result.symbol, style = MaterialTheme.typography.titleMedium, color = TextPrimary, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(18.dp))
+                    }
+                    if (result.companyName.isNotBlank() && result.companyName != result.symbol) {
+                        Text(result.companyName, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1)
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(currencyFormatter.format(result.currentPrice), style = MaterialTheme.typography.titleMedium, color = TextPrimary, fontWeight = FontWeight.Bold)
+                    val wrColor = if (result.williamsRCurrent <= -80.0) GainGreen else AccentBlue
+                    Text(
+                        "W%%R ${"%.0f".format(result.williamsRCurrent)} (${result.williamsRPeriod}p)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = wrColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // DMI indicators
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("+DI", style = MaterialTheme.typography.labelSmall, color = GainGreen)
+                        Text("${"%.1f".format(result.plusDI)}", style = MaterialTheme.typography.bodyMedium, color = GainGreen, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("-DI", style = MaterialTheme.typography.labelSmall, color = LossRed)
+                        Text("${"%.1f".format(result.minusDI)}", style = MaterialTheme.typography.bodyMedium, color = LossRed, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Card(
+                    modifier = Modifier.weight(1f),
+                    colors = CardDefaults.cardColors(containerColor = SurfaceVariant),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("DMI period", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                        Text("${result.dmiPeriod}", style = MaterialTheme.typography.bodyMedium, color = TextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "+DI leads by ${"%.1f".format(result.plusDI - result.minusDI)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = GainGreen,
+                    fontWeight = FontWeight.Medium
+                )
+                Button(
+                    onClick = onBuy,
+                    colors = ButtonDefaults.buttonColors(containerColor = GainGreen),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Buy", color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
