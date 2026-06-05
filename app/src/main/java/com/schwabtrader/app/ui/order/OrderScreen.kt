@@ -284,14 +284,12 @@ fun OrderScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 placeholder = { Text("e.g. 10", color = TextSecondary) },
                 singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    textColor = TextPrimary,
                     focusedBorderColor = AccentBlue,
                     unfocusedBorderColor = SurfaceVariant,
                     cursorColor = AccentBlue,
-                    focusedContainerColor = SurfaceVariant,
-                    unfocusedContainerColor = SurfaceVariant
+                    containerColor = SurfaceVariant
                 ),
                 shape = RoundedCornerShape(8.dp)
             )
@@ -318,7 +316,7 @@ fun OrderScreen(
                         focusedBorderColor = AccentBlue,
                         unfocusedBorderColor = SurfaceVariant,
                         cursorColor = AccentBlue,
-                        backgroundColor = SurfaceVariant
+                        containerColor = SurfaceVariant
                     ),
                     shape = RoundedCornerShape(8.dp)
                 )

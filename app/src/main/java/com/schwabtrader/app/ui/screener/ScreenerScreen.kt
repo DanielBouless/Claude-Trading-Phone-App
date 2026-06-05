@@ -3,8 +3,6 @@ package com.schwabtrader.app.ui.screener
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -65,7 +63,7 @@ import com.schwabtrader.app.ui.theme.TextSecondary
 import java.text.NumberFormat
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScreenerScreen(
     viewModel: ScreenerViewModel = hiltViewModel(),
@@ -85,7 +83,7 @@ fun ScreenerScreen(
                         fontWeight = FontWeight.Bold
                     )
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
+                colors = TopAppBarDefaults.smallTopAppBarColors(
                     containerColor = DarkBackground
                 )
             )
@@ -270,7 +268,7 @@ fun ScreenerScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScreenerFiltersSection(
     criteria: ScreenerCriteria,
@@ -307,7 +305,7 @@ private fun ScreenerFiltersSection(
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HighPeriod.values().forEach { period ->
                     val selected = criteria.highPeriods.contains(period)
                     FilterChip(
@@ -342,7 +340,7 @@ private fun ScreenerFiltersSection(
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IndexType.values().forEach { index ->
                     val selected = criteria.index == index
                     FilterChip(
