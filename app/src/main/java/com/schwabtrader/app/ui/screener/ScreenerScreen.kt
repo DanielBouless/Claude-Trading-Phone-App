@@ -307,7 +307,7 @@ private fun ScreenerFiltersSection(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Near Historical High", style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+            Text("Trading Above Historical Highs", style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HighPeriod.values().forEach { period ->
@@ -416,17 +416,17 @@ private fun ScreenedStockCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 stock.meetsHighCriteria.forEach { period ->
                     val label = when (period) {
-                        HighPeriod.ONE_YEAR   -> "Near 1Y High"
-                        HighPeriod.THREE_YEAR -> "Near 3Y High"
-                        HighPeriod.FIVE_YEAR  -> "Near 5Y High"
+                        HighPeriod.ONE_YEAR   -> "1Y High Breakout"
+                        HighPeriod.THREE_YEAR -> "3Y High Breakout"
+                        HighPeriod.FIVE_YEAR  -> "5Y High Breakout"
                     }
-                    val pctFromHigh = when (period) {
+                    val pctAbove = when (period) {
                         HighPeriod.ONE_YEAR   -> stock.percentFromOneYearHigh
                         HighPeriod.THREE_YEAR -> stock.percentFromThreeYearHigh
                         HighPeriod.FIVE_YEAR  -> stock.percentFromFiveYearHigh
                     }
                     Text(
-                        text = "$label (${"%.1f".format(pctFromHigh)}%)",
+                        text = "$label (+${"%.1f".format(pctAbove)}%)",
                         style = MaterialTheme.typography.labelSmall,
                         color = AccentBlue,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)

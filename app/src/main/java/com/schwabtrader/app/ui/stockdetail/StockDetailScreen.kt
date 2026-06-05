@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,7 +60,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.schwabtrader.app.data.api.models.Candle
+import com.schwabtrader.app.data.repository.PeerStock
 import com.schwabtrader.app.data.repository.StockDetail
+import kotlin.math.abs
 import com.schwabtrader.app.ui.theme.AccentBlue
 import com.schwabtrader.app.ui.theme.CardBackground
 import com.schwabtrader.app.ui.theme.DarkBackground
@@ -413,6 +416,37 @@ private fun PerformanceTab(detail: StockDetail) {
                 }
             }
         }
+
+        // Sector peer comparison
+        if (detail.peerComparison.size > 1) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = CardBackground),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = if (detail.sector.isNotBlank()) "${detail.sector} — 1Y Return vs Peers" else "Sector Peers — 1Y Return",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Tap a stock to view its detail",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary.copy(alpha = 0.7f)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    val maxAbs = detail.peerComparison.maxOfOrNull { abs(it.oneYearReturn) } ?: 1.0
+                    detail.peerComparison.forEach { peer ->
+                        PeerReturnBar(peer = peer, maxAbsReturn = maxAbs)
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -686,6 +720,55 @@ private fun MetricRow(label: String, value: String) {
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
         Text(value, style = MaterialTheme.typography.bodyMedium, color = TextPrimary, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+private fun PeerReturnBar(peer: PeerStock, maxAbsReturn: Double) {
+    val barColor = when {
+        peer.isCurrentStock -> AccentBlue
+        peer.oneYearReturn >= 0 -> GainGreen
+        else -> LossRed
+    }
+    val fraction = (abs(peer.oneYearReturn) / maxAbsReturn.coerceAtLeast(1.0)).toFloat().coerceIn(0f, 1f)
+    val returnText = "${if (peer.oneYearReturn >= 0) "+" else ""}${"%.1f".format(peer.oneYearReturn)}%"
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = peer.symbol,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (peer.isCurrentStock) AccentBlue else TextPrimary,
+            fontWeight = if (peer.isCurrentStock) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.width(56.dp)
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(22.dp)
+                .background(SurfaceVariant, RoundedCornerShape(4.dp))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction)
+                    .background(
+                        barColor.copy(alpha = if (peer.isCurrentStock) 1f else 0.75f),
+                        RoundedCornerShape(4.dp)
+                    )
+            )
+        }
+        Text(
+            text = returnText,
+            style = MaterialTheme.typography.labelSmall,
+            color = barColor,
+            fontWeight = if (peer.isCurrentStock) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.width(52.dp),
+            textAlign = TextAlign.End
+        )
     }
 }
 

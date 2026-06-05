@@ -46,6 +46,12 @@ data class ScreenerProgress(
     val matches: List<ScreenedStock>
 )
 
+data class PeerStock(
+    val symbol: String,
+    val oneYearReturn: Double,
+    val isCurrentStock: Boolean = false
+)
+
 data class StockDetail(
     val symbol: String,
     val companyName: String,
@@ -77,7 +83,9 @@ data class StockDetail(
     val threeYearReturn: Double,
     val fiveYearReturn: Double,
     val dailyCandles: List<Candle>,
-    val weeklyCandles: List<Candle>
+    val weeklyCandles: List<Candle>,
+    val sector: String = "",
+    val peerComparison: List<PeerStock> = emptyList()
 )
 
 @Singleton
@@ -93,6 +101,21 @@ class MarketDataRepository @Inject constructor(
             "WFC", "DHR", "NKE", "TXN", "NEE", "PM", "INTC", "MS", "RTX",
             "QCOM", "UPS", "AMGN", "IBM", "CAT", "GE"
         )
+        val SECTOR_GROUPS: Map<String, List<String>> = mapOf(
+            "Technology" to listOf("AAPL", "MSFT", "NVDA", "AVGO", "AMD", "ADBE", "INTC", "QCOM", "IBM", "ACN", "CRM", "TXN"),
+            "Communication Services" to listOf("GOOGL", "META", "NFLX"),
+            "Consumer Discretionary" to listOf("AMZN", "TSLA", "MCD", "NKE", "HD"),
+            "Healthcare" to listOf("LLY", "JNJ", "MRK", "ABBV", "ABT", "UNH", "TMO", "DHR", "AMGN"),
+            "Financials" to listOf("JPM", "BAC", "V", "MA", "WFC", "MS", "BRK.B"),
+            "Energy" to listOf("XOM", "CVX"),
+            "Consumer Staples" to listOf("COST", "WMT", "KO", "PG", "PEP", "PM"),
+            "Industrials" to listOf("CAT", "GE", "RTX", "UPS"),
+            "Utilities" to listOf("NEE"),
+            "Materials" to listOf("LIN")
+        )
+        val SYMBOL_TO_SECTOR: Map<String, String> = SECTOR_GROUPS
+            .flatMap { (sector, symbols) -> symbols.map { it to sector } }
+            .toMap()
     }
 
     private val semaphore = Semaphore(5)
@@ -143,18 +166,18 @@ class MarketDataRepository @Inject constructor(
         if (currentPrice <= 0) return null
 
         val oneYearMs = 365L * 24 * 60 * 60 * 1000
-        val oneYearCandles  = candles.filter { it.datetime >= now - oneYearMs }
-        val threeYearCandles = candles.filter { it.datetime >= now - 3 * oneYearMs }
-        val fiveYearCandles  = candles.filter { it.datetime >= now - 5 * oneYearMs }
+        // Exclude the most recent candle so current price can genuinely exceed prior high
+        val priorCandles = candles.dropLast(1)
 
-        val oneYearHigh   = oneYearCandles.maxOfOrNull  { it.high } ?: currentPrice
-        val threeYearHigh = threeYearCandles.maxOfOrNull { it.high } ?: currentPrice
-        val fiveYearHigh  = fiveYearCandles.maxOfOrNull  { it.high } ?: currentPrice
+        val priorOneYearHigh   = priorCandles.filter { it.datetime >= now - oneYearMs       }.maxOfOrNull { it.close } ?: 0.0
+        val priorThreeYearHigh = priorCandles.filter { it.datetime >= now - 3 * oneYearMs   }.maxOfOrNull { it.close } ?: 0.0
+        val priorFiveYearHigh  = priorCandles.filter { it.datetime >= now - 5 * oneYearMs   }.maxOfOrNull { it.close } ?: 0.0
 
-        fun pctFrom(high: Double) = if (high > 0) ((currentPrice - high) / high) * 100.0 else 0.0
-        val pct1Y = pctFrom(oneYearHigh)
-        val pct3Y = pctFrom(threeYearHigh)
-        val pct5Y = pctFrom(fiveYearHigh)
+        // pct > 0 means stock is trading ABOVE the prior period high (breakout)
+        fun pctAbove(priorHigh: Double) = if (priorHigh > 0) ((currentPrice - priorHigh) / priorHigh) * 100.0 else -999.0
+        val pct1Y = pctAbove(priorOneYearHigh)
+        val pct3Y = pctAbove(priorThreeYearHigh)
+        val pct5Y = pctAbove(priorFiveYearHigh)
 
         val oneYearAgoCandle = candles.lastOrNull { it.datetime < now - oneYearMs }
         val oneYearReturn = if (oneYearAgoCandle != null && oneYearAgoCandle.close > 0)
@@ -162,9 +185,9 @@ class MarketDataRepository @Inject constructor(
         val outperformance = oneYearReturn - indexOneYearReturn
 
         val meetsHighCriteria = mutableSetOf<HighPeriod>()
-        if (criteria.highPeriods.contains(HighPeriod.ONE_YEAR)   && abs(pct1Y) <= 5.0) meetsHighCriteria.add(HighPeriod.ONE_YEAR)
-        if (criteria.highPeriods.contains(HighPeriod.THREE_YEAR) && abs(pct3Y) <= 5.0) meetsHighCriteria.add(HighPeriod.THREE_YEAR)
-        if (criteria.highPeriods.contains(HighPeriod.FIVE_YEAR)  && abs(pct5Y) <= 5.0) meetsHighCriteria.add(HighPeriod.FIVE_YEAR)
+        if (criteria.highPeriods.contains(HighPeriod.ONE_YEAR)   && pct1Y >= 0.0) meetsHighCriteria.add(HighPeriod.ONE_YEAR)
+        if (criteria.highPeriods.contains(HighPeriod.THREE_YEAR) && pct3Y >= 0.0) meetsHighCriteria.add(HighPeriod.THREE_YEAR)
+        if (criteria.highPeriods.contains(HighPeriod.FIVE_YEAR)  && pct5Y >= 0.0) meetsHighCriteria.add(HighPeriod.FIVE_YEAR)
 
         if (meetsHighCriteria.isEmpty()) return null
         if (outperformance < criteria.minOutperformance) return null
@@ -222,6 +245,30 @@ class MarketDataRepository @Inject constructor(
             val ms3y = 3 * ms1y
             val ms5y = 5 * ms1y
 
+            val oneYearReturn = ret(dailyCandles, ms1y)
+
+            // Sector peer comparison
+            val sector = SYMBOL_TO_SECTOR[symbol] ?: ""
+            val peerSymbols = SECTOR_GROUPS[sector]?.filter { it != symbol } ?: emptyList()
+            val peerComparison: List<PeerStock> = try {
+                coroutineScope {
+                    val deferreds = peerSymbols.map { peer ->
+                        peer to async {
+                            runCatching {
+                                val h = marketDataService.getPriceHistory(peer, "year", 1, "weekly", 1)
+                                val c = h.candles
+                                if (c.size >= 2 && c.first().close > 0)
+                                    ((c.last().close - c.first().close) / c.first().close) * 100.0
+                                else 0.0
+                            }.getOrElse { 0.0 }
+                        }
+                    }
+                    (deferreds.map { (sym, d) -> PeerStock(sym, d.await(), false) } +
+                        PeerStock(symbol, oneYearReturn, true))
+                        .sortedByDescending { it.oneYearReturn }
+                }
+            } catch (e: Exception) { listOf(PeerStock(symbol, oneYearReturn, true)) }
+
             Result.success(StockDetail(
                 symbol = symbol,
                 companyName = fundamentals?.description?.takeIf { it.isNotBlank() }
@@ -251,11 +298,13 @@ class MarketDataRepository @Inject constructor(
                 oneMonthReturn    = ret(dailyCandles, ms1),
                 threeMonthReturn  = ret(dailyCandles, ms3),
                 sixMonthReturn    = ret(dailyCandles, ms6),
-                oneYearReturn     = ret(dailyCandles, ms1y),
+                oneYearReturn     = oneYearReturn,
                 threeYearReturn   = ret(weeklyCandles, ms3y),
                 fiveYearReturn    = ret(weeklyCandles, ms5y),
                 dailyCandles  = dailyCandles,
-                weeklyCandles = weeklyCandles
+                weeklyCandles = weeklyCandles,
+                sector = sector,
+                peerComparison = peerComparison
             ))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
