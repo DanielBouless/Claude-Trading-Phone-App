@@ -4,8 +4,7 @@
     "namespace": "android_app",
     "package_name": "com.schwabtrader.app",
     "sha256_cert_fingerprints": [
-      "REPLACE_WITH_YOUR_DEBUG_SHA256",
-      "REPLACE_WITH_YOUR_RELEASE_SHA256"
+      "CE:CD:06:8B:40:B2:0A:D6:3E:D2:0C:57:ED:99:D7:79:18:3C:F1:7C:98:69:07:27:7C:68:A1:B3:7F:2A:55:65"
     ]
   }
 }]
