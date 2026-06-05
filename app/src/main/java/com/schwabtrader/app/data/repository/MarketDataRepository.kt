@@ -17,8 +17,8 @@ enum class HighPeriod { ONE_YEAR, THREE_YEAR, FIVE_YEAR }
 
 enum class IndexType(val symbol: String, val displayName: String) {
     SP500("SPY", "S&P 500"),
-    NASDAQ("QQQ", "NASDAQ"),
-    DOW("DIA", "Dow Jones")
+    NASDAQ("QQQ", "NASDAQ 100"),
+    DOW("DIA", "Dow Jones 30")
 }
 
 data class ScreenerCriteria(
@@ -93,32 +93,163 @@ class MarketDataRepository @Inject constructor(
     private val marketDataService: SchwabMarketDataService
 ) {
     companion object {
-        val SP500_TOP_50 = listOf(
-            "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "BRK.B", "AVGO",
-            "TSLA", "JPM", "LLY", "V", "UNH", "XOM", "MA", "COST", "HD",
-            "PG", "JNJ", "MRK", "ABBV", "BAC", "KO", "NFLX", "CRM", "CVX",
-            "AMD", "WMT", "MCD", "ABT", "ACN", "PEP", "ADBE", "LIN", "TMO",
-            "WFC", "DHR", "NKE", "TXN", "NEE", "PM", "INTC", "MS", "RTX",
-            "QCOM", "UPS", "AMGN", "IBM", "CAT", "GE"
+        val SP500_STOCKS = listOf(
+            // Technology
+            "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CSCO", "ACN", "IBM", "AMD", "QCOM",
+            "TXN", "INTC", "NOW", "ADBE", "CRM", "INTU", "AMAT", "KLAC", "LRCX", "MRVL",
+            "MU", "SNPS", "CDNS", "FTNT", "PANW", "APH", "GLW", "STX", "WDC", "HPQ",
+            "HPE", "JNPR", "NTAP", "KEYS", "ANSS", "TER", "VRSN", "CDW", "CTSH", "IT",
+            "EPAM", "LDOS", "PAYC", "PTC", "ROP", "FFIV", "AKAM", "ZBRA",
+            // Communication Services
+            "GOOGL", "GOOG", "META", "NFLX", "CMCSA", "DIS", "T", "VZ", "TMUS",
+            "CHTR", "ATVI", "EA", "LYV", "PARA", "WBD", "OMC", "IPG", "FOXA", "FOX",
+            "NWS", "NWSA", "TTWO",
+            // Consumer Discretionary
+            "AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "TJX", "BKNG", "CMG",
+            "ORLY", "AZO", "GM", "F", "APTV", "DHI", "LEN", "PHM", "NVR", "TOL",
+            "ROST", "BBY", "DRI", "YUM", "HLT", "MAR", "MGM", "WYNN", "LVS", "CZR",
+            "RCL", "CCL", "NCLH", "EXPE", "ABNB", "EBAY", "ETSY", "CPRT", "KMX", "AN",
+            // Consumer Staples
+            "WMT", "COST", "PG", "KO", "PEP", "PM", "MO", "MDLZ", "CL", "KHC",
+            "GIS", "K", "SJM", "CAG", "HRL", "MKC", "CPB", "CHD", "CLX", "EL",
+            "KR", "SYY", "ADM", "BG", "TSN", "HRL", "WBA", "CVS",
+            // Healthcare
+            "LLY", "JNJ", "UNH", "MRK", "ABBV", "ABT", "TMO", "DHR", "BMY", "AMGN",
+            "PFE", "GILD", "ISRG", "VRTX", "REGN", "BIIB", "ILMN", "IDXX", "IQV", "ZBH",
+            "BAX", "BDX", "BSX", "EW", "SYK", "MDT", "HOLX", "DXCM", "ALGN", "RMD",
+            "HSIC", "CNC", "HUM", "MOH", "CI", "CVS", "MCK", "ABC", "CAH", "HCA",
+            "THC", "UHS", "VICI", "WCG", "DVA",
+            // Financials
+            "BRK.B", "JPM", "BAC", "WFC", "GS", "MS", "C", "AXP", "BLK", "SCHW",
+            "CB", "MMC", "AON", "MET", "PRU", "AFL", "ALL", "TRV", "AIG", "PGR",
+            "BK", "STT", "NTRS", "USB", "PNC", "TFC", "FITB", "HBAN", "KEY", "CFG",
+            "RF", "MTB", "SIVB", "ZION", "CMA", "FRC", "PBCT", "V", "MA", "PYPL",
+            "FIS", "FI", "GPN", "AMP", "IVZ", "BEN", "TROW", "NDAQ", "ICE",
+            "CME", "CBOE", "MKTX", "OWL",
+            // Energy
+            "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "PXD",
+            "HES", "DVN", "FANG", "APA", "BKR", "HAL", "NOV", "OKE", "WMB", "KMI",
+            "LNG", "CTRA", "EQT", "RRC", "CHK",
+            // Materials
+            "LIN", "APD", "SHW", "ECL", "FCX", "NEM", "NUE", "STLD", "CF", "MOS",
+            "ALB", "PPG", "IFF", "CE", "EMN", "HUN", "RPM", "AVY", "PKG", "IP",
+            "SEE", "SON", "FMC", "MLM", "VMC", "CRH", "DOW", "DD", "CTVA",
+            // Industrials
+            "GE", "CAT", "HON", "RTX", "LMT", "BA", "NOC", "GD", "LHX", "TDG",
+            "UPS", "FDX", "NSC", "UNP", "CSX", "WAB", "GWW", "MMM", "EMR", "ETN",
+            "PH", "ROK", "AME", "CARR", "OTIS", "XYL", "IEX", "GNRC", "TT", "JCI",
+            "FAST", "SNA", "SWK", "MAS", "ALLE", "WRK", "IR", "RSG", "WM", "CTAS",
+            "VRSK", "EFX", "CPRT", "EXPO",
+            // Real Estate
+            "PLD", "AMT", "EQIX", "CCI", "PSA", "EXR", "SBAC", "DLR", "O", "WELL",
+            "VTR", "ARE", "BXP", "SLG", "KIM", "REG", "FRT", "SPG", "MAC", "CBL",
+            "EQR", "AVB", "ESS", "MAA", "UDR", "CPT", "NXQ", "INVH", "TRNO",
+            // Utilities
+            "NEE", "DUK", "SO", "D", "AEP", "EXC", "XEL", "SRE", "ED", "ETR",
+            "PPL", "FE", "ES", "EIX", "CNP", "NI", "AEE", "WEC", "LNT", "EVRG",
+            "AWK", "CMS", "DTE", "NRG", "PCG", "AES"
         )
+
+        val NASDAQ100_STOCKS = listOf(
+            "AAPL", "MSFT", "AMZN", "NVDA", "META", "GOOGL", "GOOG", "TSLA", "AVGO", "COST",
+            "ASML", "NFLX", "AZN", "AMD", "ADBE", "QCOM", "INTU", "CSCO", "TMUS", "PEP",
+            "TXN", "AMAT", "AMGN", "ISRG", "BKNG", "HON", "VRTX", "GILD", "REGN", "ADI",
+            "SBUX", "MDLZ", "LRCX", "INTC", "KLAC", "SNPS", "MU", "CDNS", "MRVL", "PANW",
+            "FTNT", "ABNB", "PYPL", "MAR", "MELI", "KDP", "ORLY", "AEP", "PAYX", "MNST",
+            "CTAS", "ROST", "WDAY", "NXPI", "DXCM", "PCAR", "CEG", "EXC", "IDXX", "BKR",
+            "CHTR", "FAST", "ODFL", "VRSK", "BIIB", "EA", "DLTR", "CPRT", "TTWO", "GEHC",
+            "XEL", "KHC", "CDW", "CTSH", "ANSS", "FANG", "WBD", "EBAY", "ON", "GFS",
+            "ZS", "TEAM", "DDOG", "CRWD", "OKTA", "NET", "MDB", "SNOW", "PLTR", "LCID"
+        )
+
+        val DOW30_STOCKS = listOf(
+            "AAPL", "AMGN", "AMZN", "AXP", "BA", "CAT", "CRM", "CSCO", "CVX", "DOW",
+            "GS", "HD", "HON", "IBM", "JNJ", "JPM", "KO", "MCD", "MMM", "MRK",
+            "MSFT", "NVDA", "PG", "SHW", "TRV", "UNH", "V", "VZ", "WMT", "DIS"
+        )
+
         val SECTOR_GROUPS: Map<String, List<String>> = mapOf(
-            "Technology" to listOf("AAPL", "MSFT", "NVDA", "AVGO", "AMD", "ADBE", "INTC", "QCOM", "IBM", "ACN", "CRM", "TXN"),
-            "Communication Services" to listOf("GOOGL", "META", "NFLX"),
-            "Consumer Discretionary" to listOf("AMZN", "TSLA", "MCD", "NKE", "HD"),
-            "Healthcare" to listOf("LLY", "JNJ", "MRK", "ABBV", "ABT", "UNH", "TMO", "DHR", "AMGN"),
-            "Financials" to listOf("JPM", "BAC", "V", "MA", "WFC", "MS", "BRK.B"),
-            "Energy" to listOf("XOM", "CVX"),
-            "Consumer Staples" to listOf("COST", "WMT", "KO", "PG", "PEP", "PM"),
-            "Industrials" to listOf("CAT", "GE", "RTX", "UPS"),
-            "Utilities" to listOf("NEE"),
-            "Materials" to listOf("LIN")
+            "Technology" to listOf(
+                "AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "CSCO", "ACN", "IBM", "AMD", "QCOM",
+                "TXN", "INTC", "NOW", "ADBE", "CRM", "INTU", "AMAT", "KLAC", "LRCX", "MRVL",
+                "MU", "SNPS", "CDNS", "FTNT", "PANW", "APH", "GLW", "STX", "WDC", "HPQ",
+                "HPE", "JNPR", "NTAP", "KEYS", "ANSS", "TER", "VRSN", "CDW", "CTSH", "IT",
+                "EPAM", "LDOS", "PAYC", "PTC", "ROP", "FFIV", "AKAM", "ZBRA",
+                "NXPI", "ADI", "ON", "WDAY", "ZS", "CRWD", "DDOG", "NET", "OKTA", "SNOW",
+                "PLTR", "MDB", "TEAM", "GFS"
+            ),
+            "Communication Services" to listOf(
+                "GOOGL", "GOOG", "META", "NFLX", "CMCSA", "DIS", "T", "VZ", "TMUS",
+                "CHTR", "EA", "LYV", "PARA", "WBD", "OMC", "IPG", "FOXA", "FOX",
+                "NWS", "NWSA", "TTWO", "ATVI"
+            ),
+            "Consumer Discretionary" to listOf(
+                "AMZN", "TSLA", "HD", "MCD", "NKE", "LOW", "SBUX", "TJX", "BKNG", "CMG",
+                "ORLY", "AZO", "GM", "F", "APTV", "DHI", "LEN", "PHM", "NVR", "TOL",
+                "ROST", "BBY", "DRI", "YUM", "HLT", "MAR", "MGM", "WYNN", "LVS", "CZR",
+                "RCL", "CCL", "NCLH", "EXPE", "ABNB", "EBAY", "ETSY", "CPRT", "KMX", "AN",
+                "MELI", "DLTR", "ODFL", "PCAR"
+            ),
+            "Consumer Staples" to listOf(
+                "WMT", "COST", "PG", "KO", "PEP", "PM", "MO", "MDLZ", "CL", "KHC",
+                "GIS", "K", "SJM", "CAG", "HRL", "MKC", "CPB", "CHD", "CLX", "EL",
+                "KR", "SYY", "ADM", "BG", "TSN", "WBA", "CVS", "KDP", "MNST"
+            ),
+            "Healthcare" to listOf(
+                "LLY", "JNJ", "UNH", "MRK", "ABBV", "ABT", "TMO", "DHR", "BMY", "AMGN",
+                "PFE", "GILD", "ISRG", "VRTX", "REGN", "BIIB", "ILMN", "IDXX", "IQV", "ZBH",
+                "BAX", "BDX", "BSX", "EW", "SYK", "MDT", "HOLX", "DXCM", "ALGN", "RMD",
+                "HSIC", "CNC", "HUM", "MOH", "CI", "MCK", "ABC", "CAH", "HCA", "DVA",
+                "GEHC", "AZN"
+            ),
+            "Financials" to listOf(
+                "BRK.B", "JPM", "BAC", "WFC", "GS", "MS", "C", "AXP", "BLK", "SCHW",
+                "CB", "MMC", "AON", "MET", "PRU", "AFL", "ALL", "TRV", "AIG", "PGR",
+                "BK", "STT", "NTRS", "USB", "PNC", "TFC", "FITB", "HBAN", "KEY", "CFG",
+                "RF", "MTB", "V", "MA", "PYPL", "FIS", "FI", "GPN", "AMP", "IVZ",
+                "BEN", "TROW", "NDAQ", "ICE", "CME", "CBOE", "MKTX"
+            ),
+            "Energy" to listOf(
+                "XOM", "CVX", "COP", "EOG", "SLB", "MPC", "PSX", "VLO", "OXY", "PXD",
+                "HES", "DVN", "FANG", "APA", "BKR", "HAL", "NOV", "OKE", "WMB", "KMI",
+                "LNG", "CTRA", "EQT", "RRC", "CHK", "CEG"
+            ),
+            "Materials" to listOf(
+                "LIN", "APD", "SHW", "ECL", "FCX", "NEM", "NUE", "STLD", "CF", "MOS",
+                "ALB", "PPG", "IFF", "CE", "EMN", "HUN", "RPM", "AVY", "PKG", "IP",
+                "SEE", "SON", "FMC", "MLM", "VMC", "CRH", "DOW", "DD", "CTVA"
+            ),
+            "Industrials" to listOf(
+                "GE", "CAT", "HON", "RTX", "LMT", "BA", "NOC", "GD", "LHX", "TDG",
+                "UPS", "FDX", "NSC", "UNP", "CSX", "WAB", "GWW", "MMM", "EMR", "ETN",
+                "PH", "ROK", "AME", "CARR", "OTIS", "XYL", "IEX", "GNRC", "TT", "JCI",
+                "FAST", "SNA", "SWK", "MAS", "ALLE", "IR", "RSG", "WM", "CTAS",
+                "VRSK", "EFX", "EXPO", "PAYX", "PCAR", "ODFL"
+            ),
+            "Real Estate" to listOf(
+                "PLD", "AMT", "EQIX", "CCI", "PSA", "EXR", "SBAC", "DLR", "O", "WELL",
+                "VTR", "ARE", "BXP", "SLG", "KIM", "REG", "FRT", "SPG", "EQR", "AVB",
+                "ESS", "MAA", "UDR", "CPT", "INVH", "TRNO"
+            ),
+            "Utilities" to listOf(
+                "NEE", "DUK", "SO", "D", "AEP", "EXC", "XEL", "SRE", "ED", "ETR",
+                "PPL", "FE", "ES", "EIX", "CNP", "NI", "AEE", "WEC", "LNT", "EVRG",
+                "AWK", "CMS", "DTE", "NRG", "PCG", "AES"
+            )
         )
+
         val SYMBOL_TO_SECTOR: Map<String, String> = SECTOR_GROUPS
             .flatMap { (sector, symbols) -> symbols.map { it to sector } }
             .toMap()
+
+        fun stocksForIndex(index: IndexType): List<String> = when (index) {
+            IndexType.SP500  -> SP500_STOCKS
+            IndexType.NASDAQ -> NASDAQ100_STOCKS
+            IndexType.DOW    -> DOW30_STOCKS
+        }
     }
 
-    private val semaphore = Semaphore(5)
+    private val semaphore = Semaphore(10)
 
     fun screenStocks(criteria: ScreenerCriteria): Flow<ScreenerProgress> = flow {
         val now = System.currentTimeMillis()
@@ -136,10 +267,11 @@ class MarketDataRepository @Inject constructor(
         } else 0.0
 
         val results = mutableListOf<ScreenedStock>()
-        val total = SP500_TOP_50.size
+        val stocks = stocksForIndex(criteria.index)
+        val total = stocks.size
 
         coroutineScope {
-            val deferreds = SP500_TOP_50.map { symbol ->
+            val deferreds = stocks.map { symbol ->
                 async { semaphore.withPermit { screenSingleStock(symbol, criteria, indexOneYearReturn, now) } }
             }
             deferreds.forEachIndexed { i, deferred ->
@@ -169,9 +301,9 @@ class MarketDataRepository @Inject constructor(
         // Exclude the most recent candle so current price can genuinely exceed prior high
         val priorCandles = candles.dropLast(1)
 
-        val priorOneYearHigh   = priorCandles.filter { it.datetime >= now - oneYearMs       }.maxOfOrNull { it.close } ?: 0.0
-        val priorThreeYearHigh = priorCandles.filter { it.datetime >= now - 3 * oneYearMs   }.maxOfOrNull { it.close } ?: 0.0
-        val priorFiveYearHigh  = priorCandles.filter { it.datetime >= now - 5 * oneYearMs   }.maxOfOrNull { it.close } ?: 0.0
+        val priorOneYearHigh   = priorCandles.filter { it.datetime >= now - oneYearMs     }.maxOfOrNull { it.close } ?: 0.0
+        val priorThreeYearHigh = priorCandles.filter { it.datetime >= now - 3 * oneYearMs }.maxOfOrNull { it.close } ?: 0.0
+        val priorFiveYearHigh  = priorCandles.filter { it.datetime >= now - 5 * oneYearMs }.maxOfOrNull { it.close } ?: 0.0
 
         // pct > 0 means stock is trading ABOVE the prior period high (breakout)
         fun pctAbove(priorHigh: Double) = if (priorHigh > 0) ((currentPrice - priorHigh) / priorHigh) * 100.0 else -999.0
