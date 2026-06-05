@@ -382,17 +382,20 @@ class MarketDataRepository @Inject constructor(
             // Sector peer comparison
             val sector = SYMBOL_TO_SECTOR[symbol] ?: ""
             val peerSymbols = SECTOR_GROUPS[sector]?.filter { it != symbol } ?: emptyList()
+            val peerSemaphore = Semaphore(5)
             val peerComparison: List<PeerStock> = try {
                 coroutineScope {
-                    val deferreds = peerSymbols.map { peer ->
+                    val deferreds = peerSymbols.take(20).map { peer ->
                         peer to async {
-                            runCatching {
-                                val h = marketDataService.getPriceHistory(peer, "year", 1, "weekly", 1)
-                                val c = h.candles
-                                if (c.size >= 2 && c.first().close > 0)
-                                    ((c.last().close - c.first().close) / c.first().close) * 100.0
-                                else 0.0
-                            }.getOrElse { 0.0 }
+                            peerSemaphore.withPermit {
+                                runCatching {
+                                    val h = marketDataService.getPriceHistory(peer, "year", 1, "weekly", 1)
+                                    val c = h.candles
+                                    if (c.size >= 2 && c.first().close > 0)
+                                        ((c.last().close - c.first().close) / c.first().close) * 100.0
+                                    else 0.0
+                                }.getOrElse { 0.0 }
+                            }
                         }
                     }
                     (deferreds.map { (sym, d) -> PeerStock(sym, d.await(), false) } +
