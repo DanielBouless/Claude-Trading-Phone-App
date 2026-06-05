@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Candlestick chart icon -->
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M36,38 L36,30 L44,30 L44,38 Z" />
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M39,26 L41,26 L41,30 L39,30 Z" />
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M39,38 L41,38 L41,44 L39,44 Z" />
+    <path
+        android:fillColor="#F44336"
+        android:pathData="M54,50 L54,62 L62,62 L62,50 Z" />
+    <path
+        android:fillColor="#F44336"
+        android:pathData="M57,44 L59,44 L59,50 L57,50 Z" />
+    <path
+        android:fillColor="#F44336"
+        android:pathData="M57,62 L59,62 L59,68 L57,68 Z" />
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M72,42 L72,54 L80,54 L80,42 Z" />
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M75,36 L77,36 L77,42 L75,42 Z" />
+    <path
+        android:fillColor="#4CAF50"
+        android:pathData="M75,54 L77,54 L77,60 L75,60 Z" />
+</vector>
