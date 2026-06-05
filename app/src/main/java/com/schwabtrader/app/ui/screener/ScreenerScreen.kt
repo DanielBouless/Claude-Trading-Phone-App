@@ -1,5 +1,6 @@
 package com.schwabtrader.app.ui.screener
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,10 +16,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -31,6 +34,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -38,7 +42,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -68,6 +71,7 @@ import java.util.Locale
 fun ScreenerScreen(
     viewModel: ScreenerViewModel = hiltViewModel(),
     onNavigateToOrder: (symbol: String, accountHash: String) -> Unit,
+    onNavigateToDetail: (symbol: String) -> Unit,
     onConnectSchwab: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -76,16 +80,8 @@ fun ScreenerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        "Stock Screener",
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                colors = TopAppBarDefaults.smallTopAppBarColors(
-                    containerColor = DarkBackground
-                )
+                title = { Text("Stock Screener", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.smallTopAppBarColors(containerColor = DarkBackground)
             )
         },
         containerColor = DarkBackground
@@ -110,50 +106,71 @@ fun ScreenerScreen(
                         )
                     }
 
+                    // Action button row
                     item {
-                        Button(
-                            onClick = { viewModel.runScreener() },
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp)
-                                .height(52.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue),
-                            enabled = state !is ScreenerUiState.Loading && state !is ScreenerUiState.Running
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = Color.White)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (state is ScreenerUiState.Loading || state is ScreenerUiState.Running)
-                                    "Screening..." else "Run Screener",
-                                fontWeight = FontWeight.SemiBold
-                            )
+                            when (state) {
+                                is ScreenerUiState.Loading, is ScreenerUiState.Running -> {
+                                    Button(
+                                        onClick = { viewModel.stopScreener() },
+                                        modifier = Modifier.weight(1f).height(52.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = LossRed)
+                                    ) {
+                                        Icon(Icons.Default.Stop, contentDescription = null, tint = Color.White)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Stop Search", fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+
+                                is ScreenerUiState.Success -> {
+                                    Button(
+                                        onClick = { viewModel.runScreener() },
+                                        modifier = Modifier.weight(1f).height(52.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                                    ) {
+                                        Icon(Icons.Default.Search, contentDescription = null, tint = Color.White)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("New Search", fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+
+                                else -> {
+                                    Button(
+                                        onClick = { viewModel.runScreener() },
+                                        modifier = Modifier.weight(1f).height(52.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                                    ) {
+                                        Icon(Icons.Default.Search, contentDescription = null, tint = Color.White)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Run Screener", fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
+                    // State-specific content
                     when (state) {
                         is ScreenerUiState.Loading -> {
                             item {
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(32.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         CircularProgressIndicator(color = AccentBlue)
                                         Spacer(modifier = Modifier.height(16.dp))
-                                        Text(
-                                            "Fetching price histories...",
-                                            color = TextSecondary,
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        Text(
-                                            "This may take a minute",
-                                            color = TextSecondary.copy(alpha = 0.7f),
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
+                                        Text("Fetching index data…", color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+                                        Text("This may take a minute", color = TextSecondary.copy(alpha = 0.7f), style = MaterialTheme.typography.bodySmall)
                                     }
                                 }
                             }
@@ -162,13 +179,25 @@ fun ScreenerScreen(
                         is ScreenerUiState.Running -> {
                             item {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
-                                    Text(
-                                        "Screening stocks... Found ${state.resultsCount} matches so far",
-                                        color = TextSecondary,
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            "Screened ${state.processedCount} of ${state.totalCount} stocks",
+                                            color = TextSecondary,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Text(
+                                            "${state.stocks.size} match${if (state.stocks.size != 1) "es" else ""}",
+                                            color = if (state.stocks.isNotEmpty()) GainGreen else TextSecondary,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
                                     LinearProgressIndicator(
+                                        progress = state.processedCount.toFloat() / state.totalCount.coerceAtLeast(1),
                                         modifier = Modifier.fillMaxWidth(),
                                         color = AccentBlue,
                                         trackColor = SurfaceVariant
@@ -190,6 +219,7 @@ fun ScreenerScreen(
                                 items(state.stocks) { stock ->
                                     ScreenedStockCard(
                                         stock = stock,
+                                        onViewDetails = { onNavigateToDetail(stock.symbol) },
                                         onBuy = { onNavigateToOrder(stock.symbol, "") }
                                     )
                                 }
@@ -200,9 +230,7 @@ fun ScreenerScreen(
                             if (state.stocks.isEmpty()) {
                                 item {
                                     Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(32.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(32.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
@@ -216,7 +244,7 @@ fun ScreenerScreen(
                             } else {
                                 item {
                                     Text(
-                                        "${state.stocks.size} stocks found",
+                                        "${state.stocks.size} stocks found — tap any to view details",
                                         color = TextPrimary,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
@@ -226,6 +254,7 @@ fun ScreenerScreen(
                                 items(state.stocks) { stock ->
                                     ScreenedStockCard(
                                         stock = stock,
+                                        onViewDetails = { onNavigateToDetail(stock.symbol) },
                                         onBuy = { onNavigateToOrder(stock.symbol, "") }
                                     )
                                 }
@@ -235,24 +264,13 @@ fun ScreenerScreen(
                         is ScreenerUiState.Error -> {
                             item {
                                 Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(32.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(32.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            "Error running screener",
-                                            color = LossRed,
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
+                                        Text("Error running screener", color = LossRed, style = MaterialTheme.typography.titleMedium)
                                         Spacer(modifier = Modifier.height(8.dp))
-                                        Text(
-                                            state.message,
-                                            color = TextSecondary,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            textAlign = TextAlign.Center
-                                        )
+                                        Text(state.message, color = TextSecondary, style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
                                     }
                                 }
                             }
@@ -277,9 +295,7 @@ private fun ScreenerFiltersSection(
     onSetOutperformance: (Float) -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
         colors = CardDefaults.cardColors(containerColor = CardBackground),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -287,23 +303,11 @@ private fun ScreenerFiltersSection(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.FilterList, contentDescription = null, tint = AccentBlue, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    "Screen Criteria",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("Screen Criteria", style = MaterialTheme.typography.titleSmall, color = TextPrimary, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // High period selection
-            Text(
-                "Near Historical High",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                fontWeight = FontWeight.Medium
-            )
+            Text("Near Historical High", style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HighPeriod.values().forEach { period ->
@@ -312,13 +316,11 @@ private fun ScreenerFiltersSection(
                         selected = selected,
                         onClick = { onToggleHighPeriod(period) },
                         label = {
-                            Text(
-                                when (period) {
-                                    HighPeriod.ONE_YEAR -> "1Y High"
-                                    HighPeriod.THREE_YEAR -> "3Y High"
-                                    HighPeriod.FIVE_YEAR -> "5Y High"
-                                }
-                            )
+                            Text(when (period) {
+                                HighPeriod.ONE_YEAR   -> "1Y High"
+                                HighPeriod.THREE_YEAR -> "3Y High"
+                                HighPeriod.FIVE_YEAR  -> "5Y High"
+                            })
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = AccentBlue,
@@ -331,14 +333,7 @@ private fun ScreenerFiltersSection(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Index selection
-            Text(
-                "Compare vs Index",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-                fontWeight = FontWeight.Medium
-            )
+            Text("Compare vs Index", style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 IndexType.values().forEach { index ->
@@ -358,35 +353,16 @@ private fun ScreenerFiltersSection(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Outperformance threshold
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    "Min Outperformance vs Index",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    "+${"%.0f".format(criteria.minOutperformance)}%",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = GainGreen,
-                    fontWeight = FontWeight.Bold
-                )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Min Outperformance vs Index", style = MaterialTheme.typography.bodySmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+                Text("+${"%.0f".format(criteria.minOutperformance)}%", style = MaterialTheme.typography.bodySmall, color = GainGreen, fontWeight = FontWeight.Bold)
             }
             Slider(
                 value = criteria.minOutperformance,
                 onValueChange = onSetOutperformance,
                 valueRange = 0f..50f,
                 steps = 9,
-                colors = SliderDefaults.colors(
-                    thumbColor = AccentBlue,
-                    activeTrackColor = AccentBlue,
-                    inactiveTrackColor = SurfaceVariant
-                )
+                colors = SliderDefaults.colors(thumbColor = AccentBlue, activeTrackColor = AccentBlue, inactiveTrackColor = SurfaceVariant)
             )
         }
     }
@@ -395,6 +371,7 @@ private fun ScreenerFiltersSection(
 @Composable
 private fun ScreenedStockCard(
     stock: ScreenedStock,
+    onViewDetails: () -> Unit,
     onBuy: () -> Unit
 ) {
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.US)
@@ -402,7 +379,8 @@ private fun ScreenedStockCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clickable { onViewDetails() },
         colors = CardDefaults.cardColors(containerColor = CardBackground),
         shape = RoundedCornerShape(12.dp)
     ) {
@@ -413,31 +391,20 @@ private fun ScreenedStockCard(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stock.symbol,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stock.symbol, style = MaterialTheme.typography.titleMedium, color = TextPrimary, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.Default.ChevronRight, contentDescription = "View details", tint = TextSecondary, modifier = Modifier.size(18.dp))
+                    }
                     if (stock.companyName.isNotBlank() && stock.companyName != stock.symbol) {
-                        Text(
-                            text = stock.companyName,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            maxLines = 1
-                        )
+                        Text(stock.companyName, style = MaterialTheme.typography.bodySmall, color = TextSecondary, maxLines = 1)
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = currencyFormatter.format(stock.currentPrice),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text(currencyFormatter.format(stock.currentPrice), style = MaterialTheme.typography.titleMedium, color = TextPrimary, fontWeight = FontWeight.Bold)
                     val returnColor = if (stock.oneYearReturn >= 0) GainGreen else LossRed
                     Text(
-                        text = "${if (stock.oneYearReturn >= 0) "+" else ""}${"%.1f".format(stock.oneYearReturn)}% (1Y)",
+                        "${if (stock.oneYearReturn >= 0) "+" else ""}${"%.1f".format(stock.oneYearReturn)}% (1Y)",
                         style = MaterialTheme.typography.bodySmall,
                         color = returnColor
                     )
@@ -446,27 +413,23 @@ private fun ScreenedStockCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // High period badges
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 stock.meetsHighCriteria.forEach { period ->
                     val label = when (period) {
-                        HighPeriod.ONE_YEAR -> "Near 1Y High"
+                        HighPeriod.ONE_YEAR   -> "Near 1Y High"
                         HighPeriod.THREE_YEAR -> "Near 3Y High"
-                        HighPeriod.FIVE_YEAR -> "Near 5Y High"
+                        HighPeriod.FIVE_YEAR  -> "Near 5Y High"
                     }
                     val pctFromHigh = when (period) {
-                        HighPeriod.ONE_YEAR -> stock.percentFromOneYearHigh
+                        HighPeriod.ONE_YEAR   -> stock.percentFromOneYearHigh
                         HighPeriod.THREE_YEAR -> stock.percentFromThreeYearHigh
-                        HighPeriod.FIVE_YEAR -> stock.percentFromFiveYearHigh
+                        HighPeriod.FIVE_YEAR  -> stock.percentFromFiveYearHigh
                     }
                     Text(
                         text = "$label (${"%.1f".format(pctFromHigh)}%)",
                         style = MaterialTheme.typography.labelSmall,
                         color = AccentBlue,
-                        modifier = Modifier
-                            .then(
-                                Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -479,14 +442,10 @@ private fun ScreenedStockCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        text = "vs Index:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
+                    Text("vs Index:", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                     val outperfColor = if (stock.outperformance >= 0) GainGreen else LossRed
                     Text(
-                        text = "${if (stock.outperformance >= 0) "+" else ""}${"%.1f".format(stock.outperformance)}% outperformance",
+                        "${if (stock.outperformance >= 0) "+" else ""}${"%.1f".format(stock.outperformance)}% outperformance",
                         style = MaterialTheme.typography.bodySmall,
                         color = outperfColor,
                         fontWeight = FontWeight.Medium
@@ -498,19 +457,9 @@ private fun ScreenedStockCard(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.height(36.dp)
                 ) {
-                    Icon(
-                        Icons.Default.ShoppingCart,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                        tint = Color.Black
-                    )
+                    Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Black)
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        "Buy",
-                        color = Color.Black,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.labelMedium
-                    )
+                    Text("Buy", color = Color.Black, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }
@@ -520,36 +469,14 @@ private fun ScreenedStockCard(
 @Composable
 private fun NotConnectedState(onConnectSchwab: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Link,
-                contentDescription = null,
-                modifier = Modifier.size(72.dp),
-                tint = TextSecondary
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+            Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(72.dp), tint = TextSecondary)
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Connect Schwab to Run Screener",
-                style = MaterialTheme.typography.titleLarge,
-                color = TextPrimary,
-                textAlign = TextAlign.Center,
-                fontWeight = FontWeight.Bold
-            )
+            Text("Connect Schwab to Run Screener", style = MaterialTheme.typography.titleLarge, color = TextPrimary, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "The screener requires access to real-time market data via your Schwab API credentials",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
-                textAlign = TextAlign.Center
-            )
+            Text("The screener requires access to real-time market data via your Schwab API credentials", style = MaterialTheme.typography.bodyMedium, color = TextSecondary, textAlign = TextAlign.Center)
             Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = onConnectSchwab,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
-            ) {
+            Button(onClick = onConnectSchwab, colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)) {
                 Text("Connect Schwab Account")
             }
         }

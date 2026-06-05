@@ -1,6 +1,7 @@
 package com.schwabtrader.app.data.repository
 
 import com.schwabtrader.app.data.api.SchwabMarketDataService
+import com.schwabtrader.app.data.api.models.Candle
 import com.schwabtrader.app.data.api.models.QuoteDetail
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -8,7 +9,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import java.util.Calendar
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
@@ -40,12 +40,51 @@ data class ScreenedStock(
     val meetsHighCriteria: Set<HighPeriod>
 )
 
+data class ScreenerProgress(
+    val processedCount: Int,
+    val totalCount: Int,
+    val matches: List<ScreenedStock>
+)
+
+data class StockDetail(
+    val symbol: String,
+    val companyName: String,
+    val currentPrice: Double,
+    val priceChange: Double,
+    val priceChangePercent: Double,
+    val volume: Long,
+    val high52Week: Double,
+    val low52Week: Double,
+    val openPrice: Double,
+    val dayHigh: Double,
+    val dayLow: Double,
+    val bid: Double,
+    val ask: Double,
+    val marketCap: Double,
+    val peRatio: Double,
+    val eps: Double,
+    val dividendYield: Double,
+    val beta: Double,
+    val pbRatio: Double,
+    val roe: Double,
+    val sma50: Double,
+    val sma200: Double,
+    val rsi14: Double,
+    val oneMonthReturn: Double,
+    val threeMonthReturn: Double,
+    val sixMonthReturn: Double,
+    val oneYearReturn: Double,
+    val threeYearReturn: Double,
+    val fiveYearReturn: Double,
+    val dailyCandles: List<Candle>,
+    val weeklyCandles: List<Candle>
+)
+
 @Singleton
 class MarketDataRepository @Inject constructor(
     private val marketDataService: SchwabMarketDataService
 ) {
     companion object {
-        // Top 50 S&P 500 stocks by market cap
         val SP500_TOP_50 = listOf(
             "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "BRK.B", "AVGO",
             "TSLA", "JPM", "LLY", "V", "UNH", "XOM", "MA", "COST", "HD",
@@ -58,53 +97,34 @@ class MarketDataRepository @Inject constructor(
 
     private val semaphore = Semaphore(5)
 
-    fun screenStocks(criteria: ScreenerCriteria): Flow<List<ScreenedStock>> = flow {
+    fun screenStocks(criteria: ScreenerCriteria): Flow<ScreenerProgress> = flow {
         val now = System.currentTimeMillis()
-        val fiveYearsAgo = now - (5L * 365 * 24 * 60 * 60 * 1000)
-
-        // Fetch index 5yr history
         val indexHistory = runCatching {
-            marketDataService.getPriceHistory(
-                symbol = criteria.index.symbol,
-                periodType = "year",
-                period = 5,
-                frequencyType = "weekly",
-                frequency = 1
-            )
+            marketDataService.getPriceHistory(criteria.index.symbol, "year", 5, "weekly", 1)
         }.getOrNull()
 
         val indexOneYearReturn = if (indexHistory != null && indexHistory.candles.isNotEmpty()) {
             val candles = indexHistory.candles
-            val oneYearAgoIndex = candles.indexOfLast {
-                it.datetime < now - (365L * 24 * 60 * 60 * 1000)
-            }
-            if (oneYearAgoIndex >= 0 && oneYearAgoIndex < candles.size - 1) {
-                val priceOneYearAgo = candles[oneYearAgoIndex].close
-                val currentPrice = candles.last().close
-                if (priceOneYearAgo > 0) ((currentPrice - priceOneYearAgo) / priceOneYearAgo) * 100.0 else 0.0
+            val idx = candles.indexOfLast { it.datetime < now - 365L * 24 * 60 * 60 * 1000 }
+            if (idx >= 0 && idx < candles.size - 1) {
+                val p = candles[idx].close
+                if (p > 0) ((candles.last().close - p) / p) * 100.0 else 0.0
             } else 0.0
         } else 0.0
 
         val results = mutableListOf<ScreenedStock>()
+        val total = SP500_TOP_50.size
 
         coroutineScope {
             val deferreds = SP500_TOP_50.map { symbol ->
-                async {
-                    semaphore.withPermit {
-                        screenSingleStock(symbol, criteria, indexOneYearReturn, now)
-                    }
-                }
+                async { semaphore.withPermit { screenSingleStock(symbol, criteria, indexOneYearReturn, now) } }
             }
-            deferreds.forEach { deferred ->
+            deferreds.forEachIndexed { i, deferred ->
                 val result = runCatching { deferred.await() }.getOrNull()
-                if (result != null) {
-                    results.add(result)
-                    emit(results.toList())
-                }
+                if (result != null) results.add(result)
+                emit(ScreenerProgress(i + 1, total, results.toList()))
             }
         }
-
-        emit(results.toList())
     }
 
     private suspend fun screenSingleStock(
@@ -114,77 +134,50 @@ class MarketDataRepository @Inject constructor(
         now: Long
     ): ScreenedStock? {
         val priceHistory = runCatching {
-            marketDataService.getPriceHistory(
-                symbol = symbol,
-                periodType = "year",
-                period = 5,
-                frequencyType = "weekly",
-                frequency = 1
-            )
+            marketDataService.getPriceHistory(symbol, "year", 5, "weekly", 1)
         }.getOrNull() ?: return null
 
         val candles = priceHistory.candles
         if (candles.isEmpty()) return null
-
         val currentPrice = candles.last().close
         if (currentPrice <= 0) return null
 
         val oneYearMs = 365L * 24 * 60 * 60 * 1000
-        val threeYearMs = 3 * oneYearMs
-        val fiveYearMs = 5 * oneYearMs
+        val oneYearCandles  = candles.filter { it.datetime >= now - oneYearMs }
+        val threeYearCandles = candles.filter { it.datetime >= now - 3 * oneYearMs }
+        val fiveYearCandles  = candles.filter { it.datetime >= now - 5 * oneYearMs }
 
-        val oneYearCutoff = now - oneYearMs
-        val threeYearCutoff = now - threeYearMs
-        val fiveYearCutoff = now - fiveYearMs
-
-        val oneYearCandles = candles.filter { it.datetime >= oneYearCutoff }
-        val threeYearCandles = candles.filter { it.datetime >= threeYearCutoff }
-        val fiveYearCandles = candles.filter { it.datetime >= fiveYearCutoff }
-
-        val oneYearHigh = oneYearCandles.maxOfOrNull { it.high } ?: currentPrice
+        val oneYearHigh   = oneYearCandles.maxOfOrNull  { it.high } ?: currentPrice
         val threeYearHigh = threeYearCandles.maxOfOrNull { it.high } ?: currentPrice
-        val fiveYearHigh = fiveYearCandles.maxOfOrNull { it.high } ?: currentPrice
+        val fiveYearHigh  = fiveYearCandles.maxOfOrNull  { it.high } ?: currentPrice
 
-        val percentFromOneYearHigh = if (oneYearHigh > 0) ((currentPrice - oneYearHigh) / oneYearHigh) * 100.0 else 0.0
-        val percentFromThreeYearHigh = if (threeYearHigh > 0) ((currentPrice - threeYearHigh) / threeYearHigh) * 100.0 else 0.0
-        val percentFromFiveYearHigh = if (fiveYearHigh > 0) ((currentPrice - fiveYearHigh) / fiveYearHigh) * 100.0 else 0.0
+        fun pctFrom(high: Double) = if (high > 0) ((currentPrice - high) / high) * 100.0 else 0.0
+        val pct1Y = pctFrom(oneYearHigh)
+        val pct3Y = pctFrom(threeYearHigh)
+        val pct5Y = pctFrom(fiveYearHigh)
 
-        // Calculate one year return
-        val oneYearAgoCandle = candles.lastOrNull { it.datetime < oneYearCutoff }
-        val oneYearReturn = if (oneYearAgoCandle != null && oneYearAgoCandle.close > 0) {
-            ((currentPrice - oneYearAgoCandle.close) / oneYearAgoCandle.close) * 100.0
-        } else 0.0
-
+        val oneYearAgoCandle = candles.lastOrNull { it.datetime < now - oneYearMs }
+        val oneYearReturn = if (oneYearAgoCandle != null && oneYearAgoCandle.close > 0)
+            ((currentPrice - oneYearAgoCandle.close) / oneYearAgoCandle.close) * 100.0 else 0.0
         val outperformance = oneYearReturn - indexOneYearReturn
 
-        // Determine which high criteria are met (within 5% of high = "near high")
         val meetsHighCriteria = mutableSetOf<HighPeriod>()
-        if (criteria.highPeriods.contains(HighPeriod.ONE_YEAR) && abs(percentFromOneYearHigh) <= 5.0) {
-            meetsHighCriteria.add(HighPeriod.ONE_YEAR)
-        }
-        if (criteria.highPeriods.contains(HighPeriod.THREE_YEAR) && abs(percentFromThreeYearHigh) <= 5.0) {
-            meetsHighCriteria.add(HighPeriod.THREE_YEAR)
-        }
-        if (criteria.highPeriods.contains(HighPeriod.FIVE_YEAR) && abs(percentFromFiveYearHigh) <= 5.0) {
-            meetsHighCriteria.add(HighPeriod.FIVE_YEAR)
-        }
+        if (criteria.highPeriods.contains(HighPeriod.ONE_YEAR)   && abs(pct1Y) <= 5.0) meetsHighCriteria.add(HighPeriod.ONE_YEAR)
+        if (criteria.highPeriods.contains(HighPeriod.THREE_YEAR) && abs(pct3Y) <= 5.0) meetsHighCriteria.add(HighPeriod.THREE_YEAR)
+        if (criteria.highPeriods.contains(HighPeriod.FIVE_YEAR)  && abs(pct5Y) <= 5.0) meetsHighCriteria.add(HighPeriod.FIVE_YEAR)
 
-        // Must meet at least one selected high criterion AND outperform the index
         if (meetsHighCriteria.isEmpty()) return null
         if (outperformance < criteria.minOutperformance) return null
 
-        // Get company name from quotes
-        val quoteDetail = runCatching {
-            marketDataService.getQuotes(symbols = symbol)
-        }.getOrNull()?.get(symbol)
+        val quoteDetail = runCatching { marketDataService.getQuotes(symbols = symbol) }.getOrNull()?.get(symbol)
 
         return ScreenedStock(
             symbol = symbol,
-            companyName = quoteDetail?.description ?: symbol,
+            companyName = quoteDetail?.description?.takeIf { it.isNotBlank() } ?: symbol,
             currentPrice = currentPrice,
-            percentFromOneYearHigh = percentFromOneYearHigh,
-            percentFromThreeYearHigh = percentFromThreeYearHigh,
-            percentFromFiveYearHigh = percentFromFiveYearHigh,
+            percentFromOneYearHigh = pct1Y,
+            percentFromThreeYearHigh = pct3Y,
+            percentFromFiveYearHigh = pct5Y,
             oneYearReturn = oneYearReturn,
             indexOneYearReturn = indexOneYearReturn,
             outperformance = outperformance,
@@ -192,13 +185,104 @@ class MarketDataRepository @Inject constructor(
         )
     }
 
-    suspend fun getQuotes(symbols: List<String>): Result<Map<String, QuoteDetail>> {
+    suspend fun getStockDetail(symbol: String): Result<StockDetail> {
         return try {
-            val symbolsStr = symbols.joinToString(",")
-            val quotes = marketDataService.getQuotes(symbols = symbolsStr)
-            Result.success(quotes)
+            val dailyHistory = runCatching {
+                marketDataService.getPriceHistory(symbol, "year", 1, "daily", 1)
+            }.getOrNull()
+            val weeklyHistory = runCatching {
+                marketDataService.getPriceHistory(symbol, "year", 5, "weekly", 1)
+            }.getOrNull()
+            val quote = runCatching {
+                marketDataService.getQuotes(symbols = symbol)
+            }.getOrNull()?.get(symbol)
+            val fundamentals = runCatching {
+                marketDataService.getInstrumentFundamentals(symbol)
+            }.getOrNull()?.instruments?.firstOrNull()
+
+            val dailyCandles  = dailyHistory?.candles ?: emptyList()
+            val weeklyCandles = weeklyHistory?.candles ?: emptyList()
+            val currentPrice  = quote?.lastPrice?.takeIf { it > 0 }
+                ?: dailyCandles.lastOrNull()?.close ?: 0.0
+
+            val dailyCloses = dailyCandles.map { it.close }
+            val sma50  = if (dailyCloses.size >= 50)  dailyCloses.takeLast(50).average()  else 0.0
+            val sma200 = if (dailyCloses.size >= 200) dailyCloses.takeLast(200).average() else 0.0
+            val rsi14  = calculateRSI(dailyCloses, 14)
+
+            val now = System.currentTimeMillis()
+            fun ret(candles: List<Candle>, msAgo: Long): Double {
+                val ago = candles.lastOrNull { it.datetime < now - msAgo } ?: return 0.0
+                return if (ago.close > 0 && currentPrice > 0) ((currentPrice - ago.close) / ago.close) * 100.0 else 0.0
+            }
+            val ms1  = 30L  * 86_400_000L
+            val ms3  = 90L  * 86_400_000L
+            val ms6  = 180L * 86_400_000L
+            val ms1y = 365L * 86_400_000L
+            val ms3y = 3 * ms1y
+            val ms5y = 5 * ms1y
+
+            Result.success(StockDetail(
+                symbol = symbol,
+                companyName = fundamentals?.description?.takeIf { it.isNotBlank() }
+                    ?: quote?.description?.takeIf { it.isNotBlank() }
+                    ?: symbol,
+                currentPrice = currentPrice,
+                priceChange = quote?.netChange ?: 0.0,
+                priceChangePercent = quote?.netPercentChange ?: 0.0,
+                volume = quote?.totalVolume ?: 0L,
+                high52Week = quote?.week52High ?: fundamentals?.fundamental?.high52 ?: 0.0,
+                low52Week = quote?.week52Low ?: fundamentals?.fundamental?.low52 ?: 0.0,
+                openPrice = quote?.openPrice ?: 0.0,
+                dayHigh = quote?.highPrice ?: 0.0,
+                dayLow = quote?.lowPrice ?: 0.0,
+                bid = quote?.bidPrice ?: 0.0,
+                ask = quote?.askPrice ?: 0.0,
+                marketCap = fundamentals?.fundamental?.marketCap ?: 0.0,
+                peRatio = fundamentals?.fundamental?.peRatio ?: 0.0,
+                eps = fundamentals?.fundamental?.epsTTM ?: 0.0,
+                dividendYield = fundamentals?.fundamental?.dividendYield ?: 0.0,
+                beta = fundamentals?.fundamental?.beta ?: 0.0,
+                pbRatio = fundamentals?.fundamental?.pbRatio ?: 0.0,
+                roe = fundamentals?.fundamental?.returnOnEquity ?: 0.0,
+                sma50 = sma50,
+                sma200 = sma200,
+                rsi14 = rsi14,
+                oneMonthReturn    = ret(dailyCandles, ms1),
+                threeMonthReturn  = ret(dailyCandles, ms3),
+                sixMonthReturn    = ret(dailyCandles, ms6),
+                oneYearReturn     = ret(dailyCandles, ms1y),
+                threeYearReturn   = ret(weeklyCandles, ms3y),
+                fiveYearReturn    = ret(weeklyCandles, ms5y),
+                dailyCandles  = dailyCandles,
+                weeklyCandles = weeklyCandles
+            ))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    suspend fun getQuotes(symbols: List<String>): Result<Map<String, QuoteDetail>> {
+        return try {
+            Result.success(marketDataService.getQuotes(symbols = symbols.joinToString(",")))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun calculateRSI(closes: List<Double>, period: Int): Double {
+        if (closes.size < period + 1) return 50.0
+        val changes = closes.zipWithNext { a, b -> b - a }
+        var avgGain = changes.take(period).filter { it > 0 }.sumOf { it } / period
+        var avgLoss = changes.take(period).filter { it < 0 }.sumOf { -it } / period
+        for (i in period until changes.size) {
+            avgGain = (avgGain * (period - 1) + maxOf(changes[i], 0.0)) / period
+            avgLoss = (avgLoss * (period - 1) + maxOf(-changes[i], 0.0)) / period
+        }
+        if (avgLoss == 0.0) return 100.0
+        val rs = avgGain / avgLoss
+        return 100.0 - (100.0 / (1.0 + rs))
     }
 }

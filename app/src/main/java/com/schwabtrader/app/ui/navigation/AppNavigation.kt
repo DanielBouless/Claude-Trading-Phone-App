@@ -35,6 +35,7 @@ import com.schwabtrader.app.ui.order.OrderScreen
 import com.schwabtrader.app.ui.screener.ScreenerScreen
 import com.schwabtrader.app.ui.schwabconnect.SchwabConnectScreen
 import com.schwabtrader.app.ui.schwabconnect.SchwabConnectViewModel
+import com.schwabtrader.app.ui.stockdetail.StockDetailScreen
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.schwabtrader.app.ui.theme.AccentBlue
 import com.schwabtrader.app.ui.theme.CardBackground
@@ -47,6 +48,9 @@ sealed class Screen(val route: String) {
     object Screener : Screen("screener")
     object Order : Screen("order/{symbol}/{accountHash}") {
         fun createRoute(symbol: String, accountHash: String) = "order/$symbol/$accountHash"
+    }
+    object StockDetail : Screen("stockdetail/{symbol}") {
+        fun createRoute(symbol: String) = "stockdetail/$symbol"
     }
 }
 
@@ -182,9 +186,26 @@ fun AppNavigation(
                     onNavigateToOrder = { symbol, accountHash ->
                         navController.navigate(Screen.Order.createRoute(symbol, accountHash))
                     },
+                    onNavigateToDetail = { symbol ->
+                        navController.navigate(Screen.StockDetail.createRoute(symbol))
+                    },
                     onConnectSchwab = {
                         navController.navigate(Screen.SchwabConnect.route)
                     }
+                )
+            }
+
+            composable(
+                route = Screen.StockDetail.route,
+                arguments = listOf(navArgument("symbol") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val symbol = backStackEntry.arguments?.getString("symbol") ?: ""
+                StockDetailScreen(
+                    symbol = symbol,
+                    onNavigateToOrder = { sym, accountHash ->
+                        navController.navigate(Screen.Order.createRoute(sym, accountHash))
+                    },
+                    onBack = { navController.popBackStack() }
                 )
             }
 

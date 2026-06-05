@@ -63,3 +63,28 @@ data class QuoteDetail(
     @SerializedName("mark")
     val mark: Double = 0.0
 )
+
+data class InstrumentsResponse(
+    @SerializedName("instruments")
+    val instruments: List<InstrumentDetail> = emptyList()
+)
+
+data class InstrumentDetail(
+    @SerializedName("symbol") val symbol: String = "",
+    @SerializedName("description") val description: String = "",
+    @SerializedName("fundamental") val fundamental: FundamentalData? = null
+)
+
+data class FundamentalData(
+    @SerializedName("high52") val high52: Double = 0.0,
+    @SerializedName("low52") val low52: Double = 0.0,
+    @SerializedName("peRatio") val peRatio: Double = 0.0,
+    @SerializedName("pbRatio") val pbRatio: Double = 0.0,
+    @SerializedName("epsTTM") val epsTTM: Double = 0.0,
+    @SerializedName("dividendYield") val dividendYield: Double = 0.0,
+    @SerializedName("dividendAmount") val dividendAmount: Double = 0.0,
+    @SerializedName("beta") val beta: Double = 0.0,
+    @SerializedName("marketCap") val marketCap: Double = 0.0,
+    @SerializedName("returnOnEquity") val returnOnEquity: Double = 0.0,
+    @SerializedName("vol10DayAvg") val vol10DayAvg: Double = 0.0
+)

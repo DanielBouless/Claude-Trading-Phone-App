@@ -1,5 +1,6 @@
 package com.schwabtrader.app.data.api
 
+import com.schwabtrader.app.data.api.models.InstrumentsResponse
 import com.schwabtrader.app.data.api.models.PriceHistoryResponse
 import retrofit2.http.GET
 import retrofit2.http.Query
@@ -24,4 +25,10 @@ interface SchwabMarketDataService {
         @Query("fields") fields: String = "quote",
         @Query("indicative") indicative: Boolean = false
     ): Map<String, com.schwabtrader.app.data.api.models.QuoteDetail>
+
+    @GET("instruments")
+    suspend fun getInstrumentFundamentals(
+        @Query("symbol") symbol: String,
+        @Query("projection") projection: String = "fundamental"
+    ): InstrumentsResponse
 }
