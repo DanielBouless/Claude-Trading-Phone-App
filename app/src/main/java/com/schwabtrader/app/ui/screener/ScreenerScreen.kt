@@ -416,9 +416,9 @@ private fun ScreenedStockCard(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 stock.meetsHighCriteria.forEach { period ->
                     val label = when (period) {
-                        HighPeriod.ONE_YEAR   -> "1Y High Breakout"
-                        HighPeriod.THREE_YEAR -> "3Y High Breakout"
-                        HighPeriod.FIVE_YEAR  -> "5Y High Breakout"
+                        HighPeriod.ONE_YEAR   -> "1Y High"
+                        HighPeriod.THREE_YEAR -> "3Y High"
+                        HighPeriod.FIVE_YEAR  -> "5Y High"
                     }
                     val pctAbove = when (period) {
                         HighPeriod.ONE_YEAR   -> stock.percentFromOneYearHigh
