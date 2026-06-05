@@ -44,10 +44,14 @@
       color: #fff;
       border: none;
       border-radius: 8px;
-      padding: 10px 22px;
-      font-size: 0.95rem;
+      padding: 14px 28px;
+      font-size: 1rem;
+      font-weight: 600;
       cursor: pointer;
       text-decoration: none;
+      width: 100%;
+      box-sizing: border-box;
+      margin-top: 8px;
     }
     .error { color: #f85149; }
   </style>
@@ -55,9 +59,9 @@
 <body>
   <div class="card">
     <div class="spinner" id="spinner"></div>
-    <h1>Connecting Schwab account…</h1>
-    <p id="msg">Returning you to the app automatically.</p>
-    <a id="manual-btn" class="btn" style="display:none">Open Schwab Trader</a>
+    <h1>Schwab account connected!</h1>
+    <p id="msg">Tap the button below to return to the app.</p>
+    <a id="open-btn" class="btn" style="display:none">Open Schwab Trader</a>
   </div>
 
   <script>
@@ -66,7 +70,7 @@
       var code    = params.get('code');
       var state   = params.get('state');
       var msgEl   = document.getElementById('msg');
-      var btnEl   = document.getElementById('manual-btn');
+      var btnEl   = document.getElementById('open-btn');
       var spinner = document.getElementById('spinner');
 
       if (!code) {
@@ -75,21 +79,27 @@
         return;
       }
 
-      // Build the fallback custom-scheme URI that the Android app listens on
-      var deepLink = 'schwabtrader://oauth/callback'
-        + '?code='  + encodeURIComponent(code)
-        + '&state=' + encodeURIComponent(state || '');
+      var qs = '?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state || '');
 
-      // Attempt immediate redirect; show manual button after 2 s if the app
-      // didn't intercept it (e.g. App Links not yet verified on this device)
-      window.location.href = deepLink;
+      // intent:// URI — Chrome for Android opens this reliably via user tap
+      var intentLink = 'intent://oauth/callback' + qs
+        + '#Intent;scheme=schwabtrader;package=com.schwabtrader.app;end';
 
-      setTimeout(function () {
-        spinner.style.display  = 'none';
-        msgEl.textContent      = 'If the app didn\'t open automatically, tap the button below.';
-        btnEl.href             = deepLink;
-        btnEl.style.display    = 'inline-block';
-      }, 2000);
+      // Custom scheme fallback for non-Chrome browsers
+      var customLink = 'schwabtrader://oauth/callback' + qs;
+
+      var ua = navigator.userAgent || '';
+      var isAndroidChrome = /Android/.test(ua) && /Chrome\//.test(ua) && !/EdgA|OPR/.test(ua);
+      var deepLink = isAndroidChrome ? intentLink : customLink;
+
+      // Show the button immediately — Chrome blocks automatic non-gesture redirects,
+      // so a tap is the most reliable path
+      spinner.style.display = 'none';
+      btnEl.href = deepLink;
+      btnEl.style.display = 'block';
+
+      // Also try automatic redirect in case the browser allows it
+      try { window.location.href = deepLink; } catch(e) {}
     })();
   </script>
 </body>

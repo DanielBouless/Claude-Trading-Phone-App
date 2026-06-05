@@ -6,6 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.schwabtrader.app.ui.navigation.AppNavigation
 import com.schwabtrader.app.ui.theme.SchwabTraderTheme
@@ -14,8 +17,8 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    private var pendingOAuthCode: String? = null
-    private var pendingOAuthState: String? = null
+    private var pendingOAuthCode by mutableStateOf<String?>(null)
+    private var pendingOAuthState by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
