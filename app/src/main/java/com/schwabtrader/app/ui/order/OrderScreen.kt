@@ -35,12 +35,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -173,7 +170,7 @@ fun OrderScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
+                colors = TopAppBarDefaults.smallTopAppBarColors(
                     containerColor = DarkBackground
                 )
             )
@@ -253,20 +250,19 @@ fun OrderScreen(
                 fontWeight = FontWeight.Medium
             )
             Spacer(modifier = Modifier.height(8.dp))
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                OrderType.values().forEachIndexed { index, type ->
-                    SegmentedButton(
-                        selected = formState.orderType == type,
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OrderType.values().forEach { type ->
+                    val selected = formState.orderType == type
+                    Button(
                         onClick = { viewModel.setOrderType(type) },
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = OrderType.values().size),
-                        colors = SegmentedButtonDefaults.colors(
-                            activeContainerColor = AccentBlue,
-                            activeContentColor = Color.White,
-                            inactiveContainerColor = SurfaceVariant,
-                            inactiveContentColor = TextSecondary
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (selected) AccentBlue else SurfaceVariant,
+                            contentColor = if (selected) Color.White else TextSecondary
                         )
                     ) {
-                        Text(type.name)
+                        Text(type.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
             }
@@ -317,14 +313,12 @@ fun OrderScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     placeholder = { Text("e.g. 150.00", color = TextSecondary) },
                     singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
+                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                        textColor = TextPrimary,
                         focusedBorderColor = AccentBlue,
                         unfocusedBorderColor = SurfaceVariant,
                         cursorColor = AccentBlue,
-                        focusedContainerColor = SurfaceVariant,
-                        unfocusedContainerColor = SurfaceVariant
+                        backgroundColor = SurfaceVariant
                     ),
                     shape = RoundedCornerShape(8.dp)
                 )

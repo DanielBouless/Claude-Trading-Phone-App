@@ -35,6 +35,7 @@ import com.schwabtrader.app.ui.order.OrderScreen
 import com.schwabtrader.app.ui.screener.ScreenerScreen
 import com.schwabtrader.app.ui.schwabconnect.SchwabConnectScreen
 import com.schwabtrader.app.ui.schwabconnect.SchwabConnectViewModel
+import androidx.compose.material3.ExperimentalMaterial3Api
 import com.schwabtrader.app.ui.theme.AccentBlue
 import com.schwabtrader.app.ui.theme.CardBackground
 import com.schwabtrader.app.ui.theme.TextSecondary
@@ -55,6 +56,7 @@ data class BottomNavItem(
     val icon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppNavigation(
     pendingOAuthCode: String?,
