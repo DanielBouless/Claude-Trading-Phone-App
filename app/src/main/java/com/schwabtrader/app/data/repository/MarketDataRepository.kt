@@ -102,7 +102,9 @@ data class StockDetail(
     val dailyCandles: List<Candle>,
     val weeklyCandles: List<Candle>,
     val sector: String = "",
-    val peerComparison: List<PeerStock> = emptyList()
+    val peerComparison: List<PeerStock> = emptyList(),
+    val optimalWilliamsRPeriod: Int = 14,
+    val optimalDmiPeriod: Int = 14
 )
 
 @Singleton
@@ -739,6 +741,9 @@ class MarketDataRepository @Inject constructor(
                 }
             } catch (e: Exception) { listOf(PeerStock(symbol, oneYearReturn, true)) }
 
+            val wrPeriod  = if (dailyCandles.size >= 20) findOptimalWilliamsRPeriod(dailyCandles) else 14
+            val dmiPeriod = if (dailyCandles.size >= 20) findOptimalDmiPeriod(dailyCandles) else 14
+
             Result.success(StockDetail(
                 symbol = symbol,
                 companyName = fundamentals?.description?.takeIf { it.isNotBlank() }
@@ -774,7 +779,9 @@ class MarketDataRepository @Inject constructor(
                 dailyCandles  = dailyCandles,
                 weeklyCandles = weeklyCandles,
                 sector = sector,
-                peerComparison = peerComparison
+                peerComparison = peerComparison,
+                optimalWilliamsRPeriod = wrPeriod,
+                optimalDmiPeriod = dmiPeriod
             ))
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e

@@ -265,8 +265,10 @@ private fun ChartTab(detail: StockDetail) {
             else -> detail.dailyCandles
         }
     }
-    val wr  = remember(selectedTimeframe) { computeWilliamsR(displayCandles) }
-    val dmi = remember(selectedTimeframe) { computeDMI(displayCandles) }
+    val wrPeriod  = detail.optimalWilliamsRPeriod
+    val dmiPeriod = detail.optimalDmiPeriod
+    val wr  = remember(selectedTimeframe) { computeWilliamsR(displayCandles, wrPeriod) }
+    val dmi = remember(selectedTimeframe) { computeDMI(displayCandles, dmiPeriod) }
 
     Column(
         modifier = Modifier
@@ -324,7 +326,7 @@ private fun ChartTab(detail: StockDetail) {
 
             // ── Williams %R ────────────────────────────────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Williams %R (14)", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+                Text("Williams %R ($wrPeriod)", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontWeight = FontWeight.Medium)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).background(LossRed.copy(alpha = 0.6f), RoundedCornerShape(2.dp)))
                     Text("OB −20", style = MaterialTheme.typography.labelSmall, color = LossRed.copy(alpha = 0.8f))
@@ -339,7 +341,7 @@ private fun ChartTab(detail: StockDetail) {
 
             // ── DMI ────────────────────────────────────────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("DMI (14)", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+                Text("DMI ($dmiPeriod)", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontWeight = FontWeight.Medium)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(8.dp).background(GainGreen, RoundedCornerShape(2.dp)))
                     Text("+DI", style = MaterialTheme.typography.labelSmall, color = GainGreen)
