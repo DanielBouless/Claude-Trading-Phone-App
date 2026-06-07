@@ -2,6 +2,9 @@ package com.schwabtrader.app.ui.auth
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -15,9 +18,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,60 +54,106 @@ private fun Context.findFragmentActivity(): FragmentActivity? {
     return null
 }
 
+private sealed class BiometricState {
+    object Idle : BiometricState()
+    data class NeedsSetup(val message: String) : BiometricState()
+    data class Failed(val message: String) : BiometricState()
+}
+
 @Composable
 fun BiometricAuthScreen(
     onAuthSuccess: () -> Unit,
     onSignOut: () -> Unit
 ) {
     val context = LocalContext.current
-    var authFailed by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf("") }
+    var biometricState by remember { mutableStateOf<BiometricState>(BiometricState.Idle) }
     var triggerCount by remember { mutableStateOf(0) }
+
+    fun openSecuritySettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Intent(Settings.ACTION_BIOMETRIC_ENROLL).apply {
+                putExtra(
+                    Settings.EXTRA_BIOMETRIC_AUTHENTICATORS_ALLOWED,
+                    BIOMETRIC_STRONG or DEVICE_CREDENTIAL
+                )
+            }
+        } else {
+            Intent(Settings.ACTION_SECURITY_SETTINGS)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            context.startActivity(Intent(Settings.ACTION_SETTINGS))
+        }
+    }
 
     fun showPrompt() {
         val activity = context.findFragmentActivity() ?: return
         val biometricManager = BiometricManager.from(context)
-        val canAuthenticate = biometricManager.canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
 
-        if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-            val executor = ContextCompat.getMainExecutor(context)
-            val prompt = BiometricPrompt(
-                activity,
-                executor,
-                object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        onAuthSuccess()
-                    }
+        when (biometricManager.canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)) {
+            BiometricManager.BIOMETRIC_SUCCESS -> {
+                biometricState = BiometricState.Idle
+                val executor = ContextCompat.getMainExecutor(context)
+                val prompt = BiometricPrompt(
+                    activity,
+                    executor,
+                    object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            onAuthSuccess()
+                        }
 
-                    override fun onAuthenticationFailed() {
-                        authFailed = true
-                        errorMessage = "Authentication failed. Try again."
-                    }
+                        override fun onAuthenticationFailed() {
+                            biometricState = BiometricState.Failed("Authentication failed. Try again.")
+                        }
 
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        authFailed = true
-                        errorMessage = if (
-                            errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
-                            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
-                        ) "Tap Unlock to try again." else errString.toString()
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            biometricState = if (
+                                errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                                errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                            ) {
+                                BiometricState.Failed("Tap Unlock to try again.")
+                            } else {
+                                BiometricState.Failed(errString.toString())
+                            }
+                        }
                     }
-                }
-            )
-            val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Unlock App")
-                .setSubtitle("Verify your identity to continue")
-                .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
-                .build()
-            prompt.authenticate(promptInfo)
-        } else {
-            onAuthSuccess()
+                )
+                val promptInfo = BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Unlock App")
+                    .setSubtitle("Verify your identity to continue")
+                    .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+                    .build()
+                prompt.authenticate(promptInfo)
+            }
+
+            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> {
+                biometricState = BiometricState.NeedsSetup(
+                    "No biometric or screen lock is set up on this device. " +
+                        "Set up a fingerprint, face, or PIN to access the app."
+                )
+            }
+
+            BiometricManager.BIOMETRIC_ERROR_NO_DEVICE_CREDENTIAL -> {
+                biometricState = BiometricState.NeedsSetup(
+                    "A screen lock (PIN, pattern, or password) is required to use this app. " +
+                        "Please set one up in your device settings."
+                )
+            }
+
+            else -> {
+                // Hardware not present or unavailable — allow through
+                onAuthSuccess()
+            }
         }
     }
 
-    // Auto-trigger on first entry and whenever the user taps Unlock
     LaunchedEffect(triggerCount) {
         showPrompt()
     }
+
+    val state = biometricState
+    val needsSetup = state is BiometricState.NeedsSetup
 
     Column(
         modifier = Modifier
@@ -111,37 +163,62 @@ fun BiometricAuthScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.Fingerprint,
+            imageVector = if (needsSetup) Icons.Default.Lock else Icons.Default.Fingerprint,
             contentDescription = null,
             tint = AccentBlue,
             modifier = Modifier.size(72.dp)
         )
         Spacer(modifier = Modifier.height(24.dp))
         Text(
-            text = "Unlock Required",
+            text = if (needsSetup) "Security Setup Required" else "Unlock Required",
             color = TextPrimary,
             fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = if (authFailed && errorMessage.isNotEmpty()) errorMessage
-            else "Use your biometrics or screen lock to access the app.",
+            text = when (state) {
+                is BiometricState.NeedsSetup -> state.message
+                is BiometricState.Failed -> state.message
+                else -> "Use your biometrics or screen lock to access the app."
+            },
             color = TextSecondary,
             fontSize = 14.sp,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(32.dp))
-        Button(
-            onClick = {
-                authFailed = false
-                errorMessage = ""
-                triggerCount++
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
-        ) {
-            Text("Unlock")
+
+        if (needsSetup) {
+            Button(
+                onClick = { openSecuritySettings() },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                Text("Open Security Settings")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { triggerCount++ }
+            ) {
+                Text("I've set it up, try again", color = AccentBlue)
+            }
+        } else {
+            Button(
+                onClick = {
+                    biometricState = BiometricState.Idle
+                    triggerCount++
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+            ) {
+                Text("Unlock")
+            }
         }
+
         Spacer(modifier = Modifier.height(16.dp))
         TextButton(onClick = onSignOut) {
             Text("Sign Out", color = TextSecondary)
