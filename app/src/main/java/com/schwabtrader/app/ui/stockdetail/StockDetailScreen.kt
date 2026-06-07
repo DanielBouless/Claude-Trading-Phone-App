@@ -49,21 +49,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.schwabtrader.app.data.api.models.Candle
 import com.schwabtrader.app.data.repository.PeerStock
 import com.schwabtrader.app.data.repository.StockDetail
 import kotlin.math.abs
 import com.schwabtrader.app.ui.theme.AccentBlue
+import com.schwabtrader.app.ui.theme.AccentTeal
 import com.schwabtrader.app.ui.theme.CardBackground
 import com.schwabtrader.app.ui.theme.DarkBackground
 import com.schwabtrader.app.ui.theme.GainGreen
@@ -72,7 +76,10 @@ import com.schwabtrader.app.ui.theme.SurfaceVariant
 import com.schwabtrader.app.ui.theme.TextPrimary
 import com.schwabtrader.app.ui.theme.TextSecondary
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import kotlin.math.ceil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -240,21 +247,33 @@ private fun StockDetailContent(
 
 // ─── Chart Tab ────────────────────────────────────────────────────────────────
 
+// Pixels (dp) reserved on the left of every chart canvas for Y-axis labels
+private const val Y_AXIS_DP = 52f
+
 @Composable
 private fun ChartTab(detail: StockDetail) {
     var selectedTimeframe by remember { mutableStateOf("1Y") }
     val timeframes = listOf("1M", "3M", "6M", "1Y", "5Y")
 
-    val now = System.currentTimeMillis()
-    val displayCandles = when (selectedTimeframe) {
-        "1M" -> detail.dailyCandles.filter { it.datetime >= now - 30L * 86_400_000L }
-        "3M" -> detail.dailyCandles.filter { it.datetime >= now - 90L * 86_400_000L }
-        "6M" -> detail.dailyCandles.filter { it.datetime >= now - 180L * 86_400_000L }
-        "5Y" -> detail.weeklyCandles
-        else -> detail.dailyCandles
+    val displayCandles = remember(selectedTimeframe) {
+        val now = System.currentTimeMillis()
+        when (selectedTimeframe) {
+            "1M" -> detail.dailyCandles.filter { it.datetime >= now - 30L * 86_400_000L }
+            "3M" -> detail.dailyCandles.filter { it.datetime >= now - 90L * 86_400_000L }
+            "6M" -> detail.dailyCandles.filter { it.datetime >= now - 180L * 86_400_000L }
+            "5Y" -> detail.weeklyCandles
+            else -> detail.dailyCandles
+        }
     }
+    val wr  = remember(selectedTimeframe) { computeWilliamsR(displayCandles) }
+    val dmi = remember(selectedTimeframe) { computeDMI(displayCandles) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp)
+    ) {
         // Timeframe selector
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             timeframes.forEach { tf ->
@@ -283,9 +302,8 @@ private fun ChartTab(detail: StockDetail) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Chart
         if (displayCandles.size < 2) {
             Box(
                 modifier = Modifier.fillMaxWidth().height(220.dp),
@@ -294,25 +312,48 @@ private fun ChartTab(detail: StockDetail) {
                 Text("Not enough data for this timeframe", color = TextSecondary, style = MaterialTheme.typography.bodySmall)
             }
         } else {
-            val firstClose = displayCandles.first().close
-            val lastClose  = displayCandles.last().close
-            val chartColor = if (lastClose >= firstClose) GainGreen else LossRed
+            val chartColor = if (displayCandles.last().close >= displayCandles.first().close) GainGreen else LossRed
 
-            PriceChart(
-                candles = displayCandles,
-                lineColor = chartColor,
-                modifier = Modifier.fillMaxWidth().height(220.dp)
-            )
+            // ── Price ──────────────────────────────────────────────────────────
+            Text("Price", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(2.dp))
+            PriceChart(candles = displayCandles, lineColor = chartColor,
+                modifier = Modifier.fillMaxWidth().height(200.dp))
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
 
-            // Min / Max labels
-            val minP = displayCandles.minOf { it.low }
-            val maxP = displayCandles.maxOf { it.high }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Low: ${"%.2f".format(minP)}", style = MaterialTheme.typography.labelSmall, color = LossRed)
-                Text("High: ${"%.2f".format(maxP)}", style = MaterialTheme.typography.labelSmall, color = GainGreen)
+            // ── Williams %R ────────────────────────────────────────────────────
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Williams %R (14)", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(LossRed.copy(alpha = 0.6f), RoundedCornerShape(2.dp)))
+                    Text("OB −20", style = MaterialTheme.typography.labelSmall, color = LossRed.copy(alpha = 0.8f))
+                    Box(Modifier.size(8.dp).background(GainGreen.copy(alpha = 0.6f), RoundedCornerShape(2.dp)))
+                    Text("OS −80", style = MaterialTheme.typography.labelSmall, color = GainGreen.copy(alpha = 0.8f))
+                }
             }
+            Spacer(Modifier.height(2.dp))
+            WilliamsRChart(values = wr, modifier = Modifier.fillMaxWidth().height(110.dp))
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── DMI ────────────────────────────────────────────────────────────
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("DMI (14)", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontWeight = FontWeight.Medium)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(GainGreen, RoundedCornerShape(2.dp)))
+                    Text("+DI", style = MaterialTheme.typography.labelSmall, color = GainGreen)
+                    Box(Modifier.size(8.dp).background(LossRed, RoundedCornerShape(2.dp)))
+                    Text("−DI", style = MaterialTheme.typography.labelSmall, color = LossRed)
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            DmiChart(plusDI = dmi.first, minusDI = dmi.second,
+                modifier = Modifier.fillMaxWidth().height(110.dp))
+
+            // ── Shared X-axis dates ────────────────────────────────────────────
+            Spacer(Modifier.height(4.dp))
+            XAxisLabels(candles = displayCandles)
         }
     }
 }
@@ -323,41 +364,250 @@ private fun PriceChart(
     lineColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val gradientColors = listOf(lineColor.copy(alpha = 0.4f), Color.Transparent)
+    val gradientColors = listOf(lineColor.copy(alpha = 0.35f), Color.Transparent)
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val n = candles.size
         if (n < 2) return@Canvas
 
-        val minP = candles.minOf { it.low }.coerceAtMost(candles.minOf { it.close })
-        val maxP = candles.maxOf { it.high }.coerceAtLeast(candles.maxOf { it.close })
+        val leftPx = Y_AXIS_DP.dp.toPx()
+        val chartW  = w - leftPx
+
+        val minP = candles.minOf { it.low }
+        val maxP = candles.maxOf { it.high }
         val range = (maxP - minP).coerceAtLeast(0.01)
 
-        fun xOf(i: Int) = (i.toFloat() / (n - 1)) * w
-        fun yOf(price: Double) = h * (1f - ((price - minP) / range).toFloat())
+        fun xOf(i: Int)      = leftPx + (i.toFloat() / (n - 1)) * chartW
+        fun yOf(p: Double)   = h * (1f - ((p - minP) / range).toFloat())
 
+        // Y-axis: 4 horizontal grid lines + price labels
+        val labelPaint = android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(150, 176, 190, 197)
+            textSize = 10.sp.toPx()
+            textAlign = android.graphics.Paint.Align.RIGHT
+            isAntiAlias = true
+        }
+        val levels = listOf(maxP, maxP * 0.67 + minP * 0.33, maxP * 0.33 + minP * 0.67, minP)
+        levels.forEach { price ->
+            val y = yOf(price).coerceIn(0f, h)
+            drawLine(Color.White.copy(alpha = 0.07f), Offset(leftPx, y), Offset(w, y), strokeWidth = 1f)
+            val label = if (price >= 100) "$%.0f".format(price) else "$%.2f".format(price)
+            drawContext.canvas.nativeCanvas.drawText(label, leftPx - 4f, y + labelPaint.textSize * 0.38f, labelPaint)
+        }
+
+        // Line + gradient fill
         val linePath = Path()
         val fillPath = Path()
-
         candles.forEachIndexed { i, c ->
-            val x = xOf(i)
-            val y = yOf(c.close)
+            val x = xOf(i); val y = yOf(c.close)
             if (i == 0) {
                 linePath.moveTo(x, y)
-                fillPath.moveTo(0f, h)
+                fillPath.moveTo(leftPx, h)
                 fillPath.lineTo(x, y)
             } else {
                 linePath.lineTo(x, y)
                 fillPath.lineTo(x, y)
             }
         }
-        fillPath.lineTo(w, h)
-        fillPath.close()
-
+        fillPath.lineTo(w, h); fillPath.close()
         drawPath(fillPath, brush = Brush.verticalGradient(gradientColors, startY = 0f, endY = h))
-        drawPath(linePath, color = lineColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawPath(linePath, color = lineColor, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
+}
+
+@Composable
+private fun WilliamsRChart(
+    values: List<Double>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val n = values.size
+        if (n < 2) return@Canvas
+
+        val leftPx  = Y_AXIS_DP.dp.toPx()
+        val chartW  = w - leftPx
+        val ob20y   = h * 0.20f   // −20 level
+        val os80y   = h * 0.80f   // −80 level
+
+        fun xOf(i: Int)    = leftPx + (i.toFloat() / (n - 1)) * chartW
+        fun yOf(v: Double) = h * (v / -100.0).toFloat().coerceIn(0f, 1f)
+
+        // Zone tints
+        drawRect(LossRed.copy(alpha = 0.10f),  topLeft = Offset(leftPx, 0f),    size = Size(chartW, ob20y))
+        drawRect(GainGreen.copy(alpha = 0.10f), topLeft = Offset(leftPx, os80y), size = Size(chartW, h - os80y))
+
+        // Dashed reference lines
+        val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx()), 0f)
+        drawLine(LossRed.copy(alpha = 0.55f),   Offset(leftPx, ob20y), Offset(w, ob20y), 1f, pathEffect = dash)
+        drawLine(GainGreen.copy(alpha = 0.55f),  Offset(leftPx, os80y), Offset(w, os80y), 1f, pathEffect = dash)
+
+        // Y-axis labels
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(150, 176, 190, 197)
+            textSize = 10.sp.toPx()
+            textAlign = android.graphics.Paint.Align.RIGHT
+            isAntiAlias = true
+        }
+        val th = paint.textSize * 0.38f
+        drawContext.canvas.nativeCanvas.apply {
+            drawText("0",    leftPx - 4f, paint.textSize * 0.9f, paint)
+            drawText("−20",  leftPx - 4f, ob20y + th, paint)
+            drawText("−80",  leftPx - 4f, os80y + th, paint)
+            drawText("−100", leftPx - 4f, h - 2f, paint)
+        }
+
+        // Williams %R line (teal), skip NaN warmup
+        val path = Path(); var moved = false
+        values.forEachIndexed { i, v ->
+            if (v.isNaN()) { moved = false; return@forEachIndexed }
+            val x = xOf(i); val y = yOf(v)
+            if (!moved) { path.moveTo(x, y); moved = true } else path.lineTo(x, y)
+        }
+        drawPath(path, AccentTeal, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+@Composable
+private fun DmiChart(
+    plusDI: List<Double>,
+    minusDI: List<Double>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val n = plusDI.size
+        if (n < 2) return@Canvas
+
+        val leftPx = Y_AXIS_DP.dp.toPx()
+        val chartW = w - leftPx
+
+        val allValid = (plusDI + minusDI).filter { !it.isNaN() }
+        val maxVal   = ceil((allValid.maxOrNull() ?: 40.0).coerceAtLeast(40.0) / 10.0) * 10.0
+
+        fun xOf(i: Int)    = leftPx + (i.toFloat() / (n - 1)) * chartW
+        fun yOf(v: Double) = h * (1f - (v / maxVal).toFloat()).coerceIn(0f, 1f)
+
+        // Dashed line at 20
+        val y20  = yOf(20.0)
+        val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx()), 0f)
+        drawLine(Color.White.copy(alpha = 0.25f), Offset(leftPx, y20), Offset(w, y20), 1f, pathEffect = dash)
+
+        // Y-axis labels
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(150, 176, 190, 197)
+            textSize = 10.sp.toPx()
+            textAlign = android.graphics.Paint.Align.RIGHT
+            isAntiAlias = true
+        }
+        val th = paint.textSize * 0.38f
+        drawContext.canvas.nativeCanvas.apply {
+            drawText("%.0f".format(maxVal), leftPx - 4f, paint.textSize * 0.9f, paint)
+            drawText("20", leftPx - 4f, y20 + th, paint)
+            drawText("0",  leftPx - 4f, h - 2f, paint)
+        }
+
+        // +DI (green)
+        val plusPath = Path(); var plusMoved = false
+        plusDI.forEachIndexed { i, v ->
+            if (v.isNaN()) { plusMoved = false; return@forEachIndexed }
+            val x = xOf(i); val y = yOf(v)
+            if (!plusMoved) { plusPath.moveTo(x, y); plusMoved = true } else plusPath.lineTo(x, y)
+        }
+        drawPath(plusPath, GainGreen, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+        // −DI (red)
+        val minusPath = Path(); var minusMoved = false
+        minusDI.forEachIndexed { i, v ->
+            if (v.isNaN()) { minusMoved = false; return@forEachIndexed }
+            val x = xOf(i); val y = yOf(v)
+            if (!minusMoved) { minusPath.moveTo(x, y); minusMoved = true } else minusPath.lineTo(x, y)
+        }
+        drawPath(minusPath, LossRed, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+@Composable
+private fun XAxisLabels(candles: List<Candle>) {
+    if (candles.size < 2) return
+    val sdf = remember { SimpleDateFormat("MMM d", Locale.US) }
+    val n   = candles.size
+    val indices = remember(n) {
+        when {
+            n >= 5 -> listOf(0, n / 4, n / 2, 3 * n / 4, n - 1)
+            n >= 3 -> listOf(0, n / 2, n - 1)
+            else   -> listOf(0, n - 1)
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = Y_AXIS_DP.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        indices.forEach { idx ->
+            Text(
+                text = sdf.format(Date(candles[idx.coerceIn(0, n - 1)].datetime)),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextSecondary,
+                fontSize = 9.sp
+            )
+        }
+    }
+}
+
+// Compute Williams %R — returns NaN for warmup bars (first period-1 indices)
+private fun computeWilliamsR(candles: List<Candle>, period: Int = 14): List<Double> =
+    candles.mapIndexed { i, c ->
+        if (i < period - 1) Double.NaN
+        else {
+            val window  = candles.subList(i - period + 1, i + 1)
+            val highest = window.maxOf { it.high }
+            val lowest  = window.minOf { it.low }
+            val range   = highest - lowest
+            if (range == 0.0) -50.0 else ((highest - c.close) / range) * -100.0
+        }
+    }
+
+// Compute DMI (+DI / −DI) using Wilder's smoothing — NaN for warmup bars
+private fun computeDMI(candles: List<Candle>, period: Int = 14): Pair<List<Double>, List<Double>> {
+    val n       = candles.size
+    val plusDI  = MutableList(n) { Double.NaN }
+    val minusDI = MutableList(n) { Double.NaN }
+    if (n < period + 1) return Pair(plusDI, minusDI)
+
+    val tr      = DoubleArray(n - 1)
+    val plusDM  = DoubleArray(n - 1)
+    val minusDM = DoubleArray(n - 1)
+    for (j in 0 until n - 1) {
+        val cur  = candles[j + 1]; val prev = candles[j]
+        tr[j]      = maxOf(cur.high - cur.low, abs(cur.high - prev.close), abs(cur.low - prev.close))
+        val up     = cur.high - prev.high
+        val down   = prev.low - cur.low
+        plusDM[j]  = if (up > down && up > 0) up else 0.0
+        minusDM[j] = if (down > up && down > 0) down else 0.0
+    }
+
+    var smoothTR    = (0 until period).sumOf { tr[it] }
+    var smoothPlus  = (0 until period).sumOf { plusDM[it] }
+    var smoothMinus = (0 until period).sumOf { minusDM[it] }
+
+    if (smoothTR > 0) {
+        plusDI[period]  = 100.0 * smoothPlus  / smoothTR
+        minusDI[period] = 100.0 * smoothMinus / smoothTR
+    }
+    for (i in period + 1 until n) {
+        val j        = i - 1
+        smoothTR     = smoothTR    - smoothTR    / period + tr[j]
+        smoothPlus   = smoothPlus  - smoothPlus  / period + plusDM[j]
+        smoothMinus  = smoothMinus - smoothMinus / period + minusDM[j]
+        if (smoothTR > 0) {
+            plusDI[i]  = 100.0 * smoothPlus  / smoothTR
+            minusDI[i] = 100.0 * smoothMinus / smoothTR
+        }
+    }
+    return Pair(plusDI, minusDI)
 }
 
 // ─── Performance Tab ──────────────────────────────────────────────────────────
