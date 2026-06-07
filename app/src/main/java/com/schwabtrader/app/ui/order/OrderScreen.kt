@@ -83,10 +83,13 @@ fun OrderScreen(
     val formState by viewModel.formState.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val selectedAccountIndex by viewModel.selectedAccountIndex.collectAsState()
+    val currentPrice by viewModel.currentPrice.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.US)
 
     var accountDropdownExpanded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(symbol) { viewModel.loadPrice(symbol) }
 
     LaunchedEffect(uiState) {
         when (val state = uiState) {
@@ -294,6 +297,65 @@ fun OrderScreen(
                 shape = RoundedCornerShape(8.dp)
             )
 
+            // ── Dollar-amount calculator ────────────────────────────────────────
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                androidx.compose.material3.Divider(
+                    modifier = Modifier.weight(1f),
+                    color = SurfaceVariant
+                )
+                Text(
+                    "or enter dollar amount",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+                androidx.compose.material3.Divider(
+                    modifier = Modifier.weight(1f),
+                    color = SurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Dollar Amount ($)",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = formState.dollarAmount,
+                onValueChange = { viewModel.setDollarAmount(it) },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                placeholder = { Text("e.g. 1000.00", color = TextSecondary) },
+                singleLine = true,
+                leadingIcon = { Text("$", color = TextSecondary, style = MaterialTheme.typography.bodyLarge) },
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    textColor = TextPrimary,
+                    focusedBorderColor = AccentBlue,
+                    unfocusedBorderColor = SurfaceVariant,
+                    cursorColor = AccentBlue,
+                    containerColor = SurfaceVariant
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+            if (currentPrice > 0) {
+                Spacer(modifier = Modifier.height(4.dp))
+                val sharesLabel = formState.quantity.toDoubleOrNull()
+                    ?.takeIf { it > 0 }
+                    ?.let { "≈ ${formState.quantity} shares" }
+                    ?: "Enter an amount to calculate shares"
+                Text(
+                    "$sharesLabel  ·  ${currencyFormatter.format(currentPrice)}/share",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AccentBlue
+                )
+            }
+
             // Limit price field (only for LIMIT orders)
             if (formState.orderType == OrderType.LIMIT) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -370,7 +432,7 @@ fun OrderScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Estimated cost
-            val estimatedCost = viewModel.getEstimatedCost(0.0)
+            val estimatedCost = viewModel.getEstimatedCost()
             if (estimatedCost > 0) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
