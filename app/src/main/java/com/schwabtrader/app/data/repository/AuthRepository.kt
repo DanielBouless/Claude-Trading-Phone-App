@@ -36,7 +36,7 @@ class AuthRepository @Inject constructor(
         get() = firebaseAuth.currentUser != null
 
     val isSchwabConnected: Boolean
-        get() = secureStorage.hasSchwabTokens() && !secureStorage.isTokenExpired()
+        get() = secureStorage.getSchwabRefreshToken() != null
 
     fun getGoogleSignInClient(webClientId: String): GoogleSignInClient {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)

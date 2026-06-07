@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.google.firebase.auth.FirebaseAuth
 import com.schwabtrader.app.data.security.SecureStorage
+import com.schwabtrader.app.ui.auth.BiometricAuthScreen
 import com.schwabtrader.app.ui.auth.LoginScreen
 import com.schwabtrader.app.ui.auth.LoginViewModel
 import com.schwabtrader.app.ui.dashboard.DashboardScreen
@@ -43,6 +44,7 @@ import com.schwabtrader.app.ui.theme.TextSecondary
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
+    object BiometricAuth : Screen("biometric_auth")
     object SchwabConnect : Screen("schwab_connect")
     object Dashboard : Screen("dashboard")
     object Screener : Screen("screener")
@@ -128,7 +130,7 @@ fun AppNavigation(
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = if (isLoggedIn) Screen.Dashboard.route else Screen.Login.route,
+            startDestination = if (isLoggedIn) Screen.BiometricAuth.route else Screen.Login.route,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Screen.Login.route) {
@@ -136,8 +138,23 @@ fun AppNavigation(
                 LoginScreen(
                     viewModel = viewModel,
                     onLoginSuccess = {
-                        navController.navigate(Screen.Dashboard.route) {
+                        navController.navigate(Screen.BiometricAuth.route) {
                             popUpTo(Screen.Login.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            composable(Screen.BiometricAuth.route) {
+                BiometricAuthScreen(
+                    onAuthSuccess = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.BiometricAuth.route) { inclusive = true }
+                        }
+                    },
+                    onSignOut = {
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
                         }
                     }
                 )

@@ -118,6 +118,7 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.browser)
     implementation(libs.accompanist.swiperefresh)
+    implementation(libs.androidx.biometric)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
