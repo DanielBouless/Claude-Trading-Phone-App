@@ -1,5 +1,7 @@
 package com.schwabtrader.app.ui.auth
 
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
@@ -37,6 +39,15 @@ import com.schwabtrader.app.ui.theme.AccentBlue
 import com.schwabtrader.app.ui.theme.TextPrimary
 import com.schwabtrader.app.ui.theme.TextSecondary
 
+private fun Context.findFragmentActivity(): FragmentActivity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is FragmentActivity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
 @Composable
 fun BiometricAuthScreen(
     onAuthSuccess: () -> Unit,
@@ -45,9 +56,10 @@ fun BiometricAuthScreen(
     val context = LocalContext.current
     var authFailed by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var triggerCount by remember { mutableStateOf(0) }
 
-    fun launchBiometric() {
-        val activity = context as? FragmentActivity ?: return
+    fun showPrompt() {
+        val activity = context.findFragmentActivity() ?: return
         val biometricManager = BiometricManager.from(context)
         val canAuthenticate = biometricManager.canAuthenticate(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
 
@@ -67,15 +79,11 @@ fun BiometricAuthScreen(
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        if (errorCode != BiometricPrompt.ERROR_USER_CANCELED &&
-                            errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON
-                        ) {
-                            authFailed = true
-                            errorMessage = errString.toString()
-                        } else {
-                            authFailed = true
-                            errorMessage = "Authentication cancelled."
-                        }
+                        authFailed = true
+                        errorMessage = if (
+                            errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                            errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON
+                        ) "Tap Unlock to try again." else errString.toString()
                     }
                 }
             )
@@ -86,13 +94,13 @@ fun BiometricAuthScreen(
                 .build()
             prompt.authenticate(promptInfo)
         } else {
-            // No biometric or credential enrolled — skip gate
             onAuthSuccess()
         }
     }
 
-    LaunchedEffect(Unit) {
-        launchBiometric()
+    // Auto-trigger on first entry and whenever the user taps Unlock
+    LaunchedEffect(triggerCount) {
+        showPrompt()
     }
 
     Column(
@@ -125,7 +133,11 @@ fun BiometricAuthScreen(
         )
         Spacer(modifier = Modifier.height(32.dp))
         Button(
-            onClick = { authFailed = false; launchBiometric() },
+            onClick = {
+                authFailed = false
+                errorMessage = ""
+                triggerCount++
+            },
             colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
         ) {
             Text("Unlock")
