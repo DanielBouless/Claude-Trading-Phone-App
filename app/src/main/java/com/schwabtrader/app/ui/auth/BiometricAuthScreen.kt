@@ -134,13 +134,6 @@ fun BiometricAuthScreen(
                 )
             }
 
-            BiometricManager.BIOMETRIC_ERROR_NO_DEVICE_CREDENTIAL -> {
-                biometricState = BiometricState.NeedsSetup(
-                    "A screen lock (PIN, pattern, or password) is required to use this app. " +
-                        "Please set one up in your device settings."
-                )
-            }
-
             else -> {
                 // Hardware not present or unavailable — allow through
                 onAuthSuccess()
