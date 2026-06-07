@@ -48,8 +48,10 @@ sealed class Screen(val route: String) {
     object SchwabConnect : Screen("schwab_connect")
     object Dashboard : Screen("dashboard")
     object Screener : Screen("screener")
-    object Order : Screen("order/{symbol}/{accountHash}") {
-        fun createRoute(symbol: String, accountHash: String) = "order/$symbol/$accountHash"
+    object Order : Screen("order/{symbol}?accountHash={accountHash}") {
+        fun createRoute(symbol: String, accountHash: String) =
+            if (accountHash.isNotBlank()) "order/$symbol?accountHash=$accountHash"
+            else "order/$symbol"
     }
     object StockDetail : Screen("stockdetail/{symbol}") {
         fun createRoute(symbol: String) = "stockdetail/$symbol"
@@ -230,7 +232,11 @@ fun AppNavigation(
                 route = Screen.Order.route,
                 arguments = listOf(
                     navArgument("symbol") { type = NavType.StringType },
-                    navArgument("accountHash") { type = NavType.StringType }
+                    navArgument("accountHash") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
                 )
             ) { backStackEntry ->
                 val symbol = backStackEntry.arguments?.getString("symbol") ?: ""
