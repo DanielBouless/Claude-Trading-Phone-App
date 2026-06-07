@@ -49,7 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Size  // used in WilliamsRChart drawRect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -365,54 +365,51 @@ private fun PriceChart(
     modifier: Modifier = Modifier
 ) {
     val gradientColors = listOf(lineColor.copy(alpha = 0.35f), Color.Transparent)
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val n = candles.size
-        if (n < 2) return@Canvas
+    val minP = candles.minOf { it.low }
+    val maxP = candles.maxOf { it.high }
+    val mid1 = maxP * 0.67 + minP * 0.33
+    val mid2 = maxP * 0.33 + minP * 0.67
 
-        val leftPx = Y_AXIS_DP.dp.toPx()
-        val chartW  = w - leftPx
-
-        val minP = candles.minOf { it.low }
-        val maxP = candles.maxOf { it.high }
-        val range = (maxP - minP).coerceAtLeast(0.01)
-
-        fun xOf(i: Int)      = leftPx + (i.toFloat() / (n - 1)) * chartW
-        fun yOf(p: Double)   = h * (1f - ((p - minP) / range).toFloat())
-
-        // Y-axis: 4 horizontal grid lines + price labels
-        val labelPaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.argb(150, 176, 190, 197)
-            textSize = 10.sp.toPx()
-            textAlign = android.graphics.Paint.Align.RIGHT
-            isAntiAlias = true
-        }
-        val levels = listOf(maxP, maxP * 0.67 + minP * 0.33, maxP * 0.33 + minP * 0.67, minP)
-        levels.forEach { price ->
-            val y = yOf(price).coerceIn(0f, h)
-            drawLine(Color.White.copy(alpha = 0.07f), Offset(leftPx, y), Offset(w, y), strokeWidth = 1f)
-            val label = if (price >= 100) "$%.0f".format(price) else "$%.2f".format(price)
-            drawContext.canvas.nativeCanvas.drawText(label, leftPx - 4f, y + labelPaint.textSize * 0.38f, labelPaint)
-        }
-
-        // Line + gradient fill
-        val linePath = Path()
-        val fillPath = Path()
-        candles.forEachIndexed { i, c ->
-            val x = xOf(i); val y = yOf(c.close)
-            if (i == 0) {
-                linePath.moveTo(x, y)
-                fillPath.moveTo(leftPx, h)
-                fillPath.lineTo(x, y)
-            } else {
-                linePath.lineTo(x, y)
-                fillPath.lineTo(x, y)
+    Row(modifier = modifier) {
+        // Y-axis labels at 0%, 33%, 67%, 100% of chart height
+        Column(
+            modifier = Modifier.width(Y_AXIS_DP.dp).fillMaxHeight(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            listOf(maxP, mid1, mid2, minP).forEach { price ->
+                Text(
+                    text = if (price >= 100) "$%.0f".format(price) else "$%.2f".format(price),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    fontSize = 9.sp,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
-        fillPath.lineTo(w, h); fillPath.close()
-        drawPath(fillPath, brush = Brush.verticalGradient(gradientColors, startY = 0f, endY = h))
-        drawPath(linePath, color = lineColor, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        // Chart canvas
+        Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            val w = size.width; val h = size.height; val n = candles.size
+            if (n < 2) return@Canvas
+            val range = (maxP - minP).coerceAtLeast(0.01)
+            fun xOf(i: Int)    = (i.toFloat() / (n - 1)) * w
+            fun yOf(p: Double) = h * (1f - ((p - minP) / range).toFloat())
+            // Horizontal grid lines
+            listOf(maxP, mid1, mid2, minP).forEach { price ->
+                val y = yOf(price).coerceIn(0f, h)
+                drawLine(Color.White.copy(alpha = 0.07f), Offset(0f, y), Offset(w, y), strokeWidth = 1f)
+            }
+            // Line + fill
+            val linePath = Path(); val fillPath = Path()
+            candles.forEachIndexed { i, c ->
+                val x = xOf(i); val y = yOf(c.close)
+                if (i == 0) { linePath.moveTo(x, y); fillPath.moveTo(0f, h); fillPath.lineTo(x, y) }
+                else        { linePath.lineTo(x, y); fillPath.lineTo(x, y) }
+            }
+            fillPath.lineTo(w, h); fillPath.close()
+            drawPath(fillPath, brush = Brush.verticalGradient(gradientColors, startY = 0f, endY = h))
+            drawPath(linePath, color = lineColor, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
     }
 }
 
@@ -421,52 +418,41 @@ private fun WilliamsRChart(
     values: List<Double>,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val n = values.size
-        if (n < 2) return@Canvas
-
-        val leftPx  = Y_AXIS_DP.dp.toPx()
-        val chartW  = w - leftPx
-        val ob20y   = h * 0.20f   // −20 level
-        val os80y   = h * 0.80f   // −80 level
-
-        fun xOf(i: Int)    = leftPx + (i.toFloat() / (n - 1)) * chartW
-        fun yOf(v: Double) = h * (v / -100.0).toFloat().coerceIn(0f, 1f)
-
-        // Zone tints
-        drawRect(LossRed.copy(alpha = 0.10f),  topLeft = Offset(leftPx, 0f),    size = Size(chartW, ob20y))
-        drawRect(GainGreen.copy(alpha = 0.10f), topLeft = Offset(leftPx, os80y), size = Size(chartW, h - os80y))
-
-        // Dashed reference lines
-        val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx()), 0f)
-        drawLine(LossRed.copy(alpha = 0.55f),   Offset(leftPx, ob20y), Offset(w, ob20y), 1f, pathEffect = dash)
-        drawLine(GainGreen.copy(alpha = 0.55f),  Offset(leftPx, os80y), Offset(w, os80y), 1f, pathEffect = dash)
-
-        // Y-axis labels
-        val paint = android.graphics.Paint().apply {
-            color = android.graphics.Color.argb(150, 176, 190, 197)
-            textSize = 10.sp.toPx()
-            textAlign = android.graphics.Paint.Align.RIGHT
-            isAntiAlias = true
+    Row(modifier = modifier) {
+        // Y-axis labels: 0 at top, −20 at 20%, −80 at 80%, −100 at bottom
+        // Weighted spacers: gap above −20 = 18%, gap between −20 and −80 = 56%, gap below −80 = 18%
+        Column(modifier = Modifier.width(Y_AXIS_DP.dp).fillMaxHeight()) {
+            Text("0",    style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontSize = 9.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.weight(18f))
+            Text("−20",  style = MaterialTheme.typography.labelSmall, color = LossRed.copy(alpha = 0.8f), fontSize = 9.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.weight(56f))
+            Text("−80",  style = MaterialTheme.typography.labelSmall, color = GainGreen.copy(alpha = 0.8f), fontSize = 9.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.weight(18f))
+            Text("−100", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontSize = 9.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
         }
-        val th = paint.textSize * 0.38f
-        drawContext.canvas.nativeCanvas.apply {
-            drawText("0",    leftPx - 4f, paint.textSize * 0.9f, paint)
-            drawText("−20",  leftPx - 4f, ob20y + th, paint)
-            drawText("−80",  leftPx - 4f, os80y + th, paint)
-            drawText("−100", leftPx - 4f, h - 2f, paint)
+        // Chart canvas
+        Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            val w = size.width; val h = size.height; val n = values.size
+            if (n < 2) return@Canvas
+            val ob20y = h * 0.20f; val os80y = h * 0.80f
+            fun xOf(i: Int)    = (i.toFloat() / (n - 1)) * w
+            fun yOf(v: Double) = h * (v / -100.0).toFloat().coerceIn(0f, 1f)
+            // Zone tints
+            drawRect(LossRed.copy(alpha = 0.10f),   topLeft = Offset(0f, 0f),    size = Size(w, ob20y))
+            drawRect(GainGreen.copy(alpha = 0.10f),  topLeft = Offset(0f, os80y), size = Size(w, h - os80y))
+            // Reference lines
+            val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx()), 0f)
+            drawLine(LossRed.copy(alpha = 0.55f),   Offset(0f, ob20y), Offset(w, ob20y), 1f, pathEffect = dash)
+            drawLine(GainGreen.copy(alpha = 0.55f),  Offset(0f, os80y), Offset(w, os80y), 1f, pathEffect = dash)
+            // %R line
+            val path = Path(); var moved = false
+            values.forEachIndexed { i, v ->
+                if (v.isNaN()) { moved = false; return@forEachIndexed }
+                val x = xOf(i); val y = yOf(v)
+                if (!moved) { path.moveTo(x, y); moved = true } else path.lineTo(x, y)
+            }
+            drawPath(path, AccentTeal, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
-
-        // Williams %R line (teal), skip NaN warmup
-        val path = Path(); var moved = false
-        values.forEachIndexed { i, v ->
-            if (v.isNaN()) { moved = false; return@forEachIndexed }
-            val x = xOf(i); val y = yOf(v)
-            if (!moved) { path.moveTo(x, y); moved = true } else path.lineTo(x, y)
-        }
-        drawPath(path, AccentTeal, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
@@ -476,57 +462,47 @@ private fun DmiChart(
     minusDI: List<Double>,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val n = plusDI.size
-        if (n < 2) return@Canvas
+    val allValid = (plusDI + minusDI).filter { !it.isNaN() }
+    val maxVal   = ceil((allValid.maxOrNull() ?: 40.0).coerceAtLeast(40.0) / 10.0) * 10.0
+    // Fraction of chart height where the "20" label sits (from top)
+    val frac20   = ((1.0 - 20.0 / maxVal) * 100f).toFloat().coerceIn(1f, 98f)
 
-        val leftPx = Y_AXIS_DP.dp.toPx()
-        val chartW = w - leftPx
-
-        val allValid = (plusDI + minusDI).filter { !it.isNaN() }
-        val maxVal   = ceil((allValid.maxOrNull() ?: 40.0).coerceAtLeast(40.0) / 10.0) * 10.0
-
-        fun xOf(i: Int)    = leftPx + (i.toFloat() / (n - 1)) * chartW
-        fun yOf(v: Double) = h * (1f - (v / maxVal).toFloat()).coerceIn(0f, 1f)
-
-        // Dashed line at 20
-        val y20  = yOf(20.0)
-        val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx()), 0f)
-        drawLine(Color.White.copy(alpha = 0.25f), Offset(leftPx, y20), Offset(w, y20), 1f, pathEffect = dash)
-
-        // Y-axis labels
-        val paint = android.graphics.Paint().apply {
-            color = android.graphics.Color.argb(150, 176, 190, 197)
-            textSize = 10.sp.toPx()
-            textAlign = android.graphics.Paint.Align.RIGHT
-            isAntiAlias = true
+    Row(modifier = modifier) {
+        // Y-axis: maxVal at top, "20" at the correct fractional height, "0" at bottom
+        Column(modifier = Modifier.width(Y_AXIS_DP.dp).fillMaxHeight()) {
+            Text("%.0f".format(maxVal), style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontSize = 9.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.weight(frac20))
+            Text("20", style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontSize = 9.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.weight(100f - frac20))
+            Text("0",  style = MaterialTheme.typography.labelSmall, color = TextSecondary, fontSize = 9.sp, textAlign = TextAlign.End, modifier = Modifier.fillMaxWidth())
         }
-        val th = paint.textSize * 0.38f
-        drawContext.canvas.nativeCanvas.apply {
-            drawText("%.0f".format(maxVal), leftPx - 4f, paint.textSize * 0.9f, paint)
-            drawText("20", leftPx - 4f, y20 + th, paint)
-            drawText("0",  leftPx - 4f, h - 2f, paint)
+        // Chart canvas
+        Canvas(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            val w = size.width; val h = size.height; val n = plusDI.size
+            if (n < 2) return@Canvas
+            fun xOf(i: Int)    = (i.toFloat() / (n - 1)) * w
+            fun yOf(v: Double) = h * (1f - (v / maxVal).toFloat()).coerceIn(0f, 1f)
+            // Dashed line at 20
+            val y20  = yOf(20.0)
+            val dash = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 4.dp.toPx()), 0f)
+            drawLine(Color.White.copy(alpha = 0.25f), Offset(0f, y20), Offset(w, y20), 1f, pathEffect = dash)
+            // +DI
+            val plusPath = Path(); var plusMoved = false
+            plusDI.forEachIndexed { i, v ->
+                if (v.isNaN()) { plusMoved = false; return@forEachIndexed }
+                val x = xOf(i); val y = yOf(v)
+                if (!plusMoved) { plusPath.moveTo(x, y); plusMoved = true } else plusPath.lineTo(x, y)
+            }
+            drawPath(plusPath, GainGreen, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+            // −DI
+            val minusPath = Path(); var minusMoved = false
+            minusDI.forEachIndexed { i, v ->
+                if (v.isNaN()) { minusMoved = false; return@forEachIndexed }
+                val x = xOf(i); val y = yOf(v)
+                if (!minusMoved) { minusPath.moveTo(x, y); minusMoved = true } else minusPath.lineTo(x, y)
+            }
+            drawPath(minusPath, LossRed, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
-
-        // +DI (green)
-        val plusPath = Path(); var plusMoved = false
-        plusDI.forEachIndexed { i, v ->
-            if (v.isNaN()) { plusMoved = false; return@forEachIndexed }
-            val x = xOf(i); val y = yOf(v)
-            if (!plusMoved) { plusPath.moveTo(x, y); plusMoved = true } else plusPath.lineTo(x, y)
-        }
-        drawPath(plusPath, GainGreen, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-        // −DI (red)
-        val minusPath = Path(); var minusMoved = false
-        minusDI.forEachIndexed { i, v ->
-            if (v.isNaN()) { minusMoved = false; return@forEachIndexed }
-            val x = xOf(i); val y = yOf(v)
-            if (!minusMoved) { minusPath.moveTo(x, y); minusMoved = true } else minusPath.lineTo(x, y)
-        }
-        drawPath(minusPath, LossRed, style = Stroke(1.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 }
 
