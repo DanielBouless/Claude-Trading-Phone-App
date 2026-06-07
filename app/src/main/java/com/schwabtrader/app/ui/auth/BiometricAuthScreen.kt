@@ -34,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.schwabtrader.app.ui.theme.AccentBlue
-import com.schwabtrader.app.ui.theme.Background
 import com.schwabtrader.app.ui.theme.TextPrimary
 import com.schwabtrader.app.ui.theme.TextSecondary
 
