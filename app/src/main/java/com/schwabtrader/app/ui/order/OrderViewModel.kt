@@ -198,53 +198,55 @@ class OrderViewModel @Inject constructor(
         quantity: Double,
         form: OrderFormState,
         accountHash: String
-    ): Result<Unit> = when (form.sellStrategy) {
-        SellStrategy.MARKET -> portfolioRepository.placeOrder(
-            accountHash = accountHash,
-            symbol = symbol,
-            quantity = quantity,
-            orderType = "MARKET",
-            instruction = "SELL"
-        )
-        SellStrategy.LIMIT -> {
-            val lp = form.limitPrice.toDoubleOrNull()
-                ?: return Result.failure(Exception("Invalid limit price"))
-            portfolioRepository.placeOrder(
+    ): Result<Unit> {
+        return when (form.sellStrategy) {
+            SellStrategy.MARKET -> portfolioRepository.placeOrder(
                 accountHash = accountHash,
                 symbol = symbol,
                 quantity = quantity,
-                orderType = "LIMIT",
-                instruction = "SELL",
-                limitPrice = lp
+                orderType = "MARKET",
+                instruction = "SELL"
             )
-        }
-        SellStrategy.STOP_LOSS -> {
-            val sp = form.stopPrice.toDoubleOrNull()
-                ?: return Result.failure(Exception("Invalid stop price"))
-            portfolioRepository.placeOrder(
-                accountHash = accountHash,
-                symbol = symbol,
-                quantity = quantity,
-                orderType = "STOP",
-                instruction = "SELL",
-                stopPrice = sp,
-                duration = "GTC"
-            )
-        }
-        SellStrategy.TRAILING_STOP -> {
-            val offset = form.trailingAmount.toDoubleOrNull()
-                ?: return Result.failure(Exception("Invalid trailing amount"))
-            val linkType = if (form.trailingUnit == TrailingStopUnit.PERCENT) "PERCENT" else "VALUE"
-            portfolioRepository.placeOrder(
-                accountHash = accountHash,
-                symbol = symbol,
-                quantity = quantity,
-                orderType = "TRAILING_STOP",
-                instruction = "SELL",
-                trailingStopLinkType = linkType,
-                trailingStopOffset = offset,
-                duration = "GTC"
-            )
+            SellStrategy.LIMIT -> {
+                val lp = form.limitPrice.toDoubleOrNull()
+                    ?: return Result.failure(Exception("Invalid limit price"))
+                portfolioRepository.placeOrder(
+                    accountHash = accountHash,
+                    symbol = symbol,
+                    quantity = quantity,
+                    orderType = "LIMIT",
+                    instruction = "SELL",
+                    limitPrice = lp
+                )
+            }
+            SellStrategy.STOP_LOSS -> {
+                val sp = form.stopPrice.toDoubleOrNull()
+                    ?: return Result.failure(Exception("Invalid stop price"))
+                portfolioRepository.placeOrder(
+                    accountHash = accountHash,
+                    symbol = symbol,
+                    quantity = quantity,
+                    orderType = "STOP",
+                    instruction = "SELL",
+                    stopPrice = sp,
+                    duration = "GTC"
+                )
+            }
+            SellStrategy.TRAILING_STOP -> {
+                val offset = form.trailingAmount.toDoubleOrNull()
+                    ?: return Result.failure(Exception("Invalid trailing amount"))
+                val linkType = if (form.trailingUnit == TrailingStopUnit.PERCENT) "PERCENT" else "VALUE"
+                portfolioRepository.placeOrder(
+                    accountHash = accountHash,
+                    symbol = symbol,
+                    quantity = quantity,
+                    orderType = "TRAILING_STOP",
+                    instruction = "SELL",
+                    trailingStopLinkType = linkType,
+                    trailingStopOffset = offset,
+                    duration = "GTC"
+                )
+            }
         }
     }
 
