@@ -10,6 +10,14 @@ import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+data class SellOnFillParams(
+    val orderType: String,              // "STOP", "TRAILING_STOP", "LIMIT"
+    val limitPrice: Double? = null,
+    val stopPrice: Double? = null,
+    val trailingStopLinkType: String? = null,   // "PERCENT" or "VALUE"
+    val trailingStopOffset: Double? = null
+)
+
 data class Portfolio(
     val totalValue: Double,
     val dayGainLoss: Double,
@@ -133,11 +141,32 @@ class PortfolioRepository @Inject constructor(
         stopPrice: Double? = null,
         trailingStopLinkType: String? = null,
         trailingStopOffset: Double? = null,
-        duration: String = "DAY"
+        duration: String = "DAY",
+        sellOnFill: SellOnFillParams? = null
     ): Result<Unit> {
         return try {
+            val childOrder = sellOnFill?.let { s ->
+                OrderRequest(
+                    orderType = s.orderType,
+                    orderStrategyType = "SINGLE",
+                    duration = "GTC",
+                    price = if (s.orderType == "LIMIT") s.limitPrice else null,
+                    stopPrice = if (s.orderType == "STOP") s.stopPrice else null,
+                    stopPriceLinkBasis = if (s.orderType == "TRAILING_STOP") "BID" else null,
+                    stopPriceLinkType = s.trailingStopLinkType,
+                    stopPriceOffset = s.trailingStopOffset,
+                    orderLegCollection = listOf(
+                        OrderLegCollection(
+                            instruction = "SELL",
+                            quantity = quantity,
+                            instrument = OrderInstrument(symbol = symbol, assetType = "EQUITY")
+                        )
+                    )
+                )
+            }
             val orderRequest = OrderRequest(
                 orderType = orderType,
+                orderStrategyType = if (childOrder != null) "TRIGGER" else "SINGLE",
                 duration = duration,
                 price = if (orderType == "LIMIT") limitPrice else null,
                 stopPrice = if (orderType == "STOP") stopPrice else null,
@@ -150,7 +179,8 @@ class PortfolioRepository @Inject constructor(
                         quantity = quantity,
                         instrument = OrderInstrument(symbol = symbol, assetType = "EQUITY")
                     )
-                )
+                ),
+                childOrderStrategies = childOrder?.let { listOf(it) }
             )
             val response = traderService.placeOrder(accountHash, orderRequest)
             if (response.isSuccessful || response.code() == 201) {

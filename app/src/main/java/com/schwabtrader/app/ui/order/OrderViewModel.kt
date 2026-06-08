@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schwabtrader.app.data.repository.MarketDataRepository
 import com.schwabtrader.app.data.repository.PortfolioRepository
+import com.schwabtrader.app.data.repository.SellOnFillParams
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,7 +34,14 @@ data class OrderFormState(
     val sellStrategy: SellStrategy = SellStrategy.MARKET,
     val stopPrice: String = "",
     val trailingAmount: String = "",
-    val trailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT
+    val trailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT,
+    // Sell-on-fill (bracket order — only used when direction == BUY)
+    val addSellOnFill: Boolean = false,
+    val sellOnFillStrategy: SellStrategy = SellStrategy.STOP_LOSS,
+    val sellOnFillLimitPrice: String = "",
+    val sellOnFillStopPrice: String = "",
+    val sellOnFillTrailingAmount: String = "",
+    val sellOnFillTrailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT
 )
 
 @HiltViewModel
@@ -131,6 +139,31 @@ class OrderViewModel @Inject constructor(
         _formState.value = _formState.value.copy(trailingUnit = unit)
     }
 
+    // Sell-on-fill setters
+    fun setAddSellOnFill(enabled: Boolean) {
+        _formState.value = _formState.value.copy(addSellOnFill = enabled)
+    }
+
+    fun setSellOnFillStrategy(strategy: SellStrategy) {
+        _formState.value = _formState.value.copy(sellOnFillStrategy = strategy)
+    }
+
+    fun setSellOnFillLimitPrice(price: String) {
+        _formState.value = _formState.value.copy(sellOnFillLimitPrice = price)
+    }
+
+    fun setSellOnFillStopPrice(price: String) {
+        _formState.value = _formState.value.copy(sellOnFillStopPrice = price)
+    }
+
+    fun setSellOnFillTrailingAmount(amount: String) {
+        _formState.value = _formState.value.copy(sellOnFillTrailingAmount = amount)
+    }
+
+    fun setSellOnFillTrailingUnit(unit: TrailingStopUnit) {
+        _formState.value = _formState.value.copy(sellOnFillTrailingUnit = unit)
+    }
+
     fun setSelectedAccountIndex(index: Int) {
         _selectedAccountIndex.value = index
     }
@@ -183,14 +216,41 @@ class OrderViewModel @Inject constructor(
             form.limitPrice.toDoubleOrNull()
                 ?: return Result.failure(Exception("Invalid limit price"))
         } else null
+
+        val sellOnFill = if (form.addSellOnFill) buildSellOnFillParams(form) else null
+
         return portfolioRepository.placeOrder(
             accountHash = accountHash,
             symbol = symbol,
             quantity = quantity,
             orderType = if (form.orderType == OrderType.LIMIT) "LIMIT" else "MARKET",
             instruction = "BUY",
-            limitPrice = limitPrice
+            limitPrice = limitPrice,
+            sellOnFill = sellOnFill
         )
+    }
+
+    private fun buildSellOnFillParams(form: OrderFormState): SellOnFillParams? {
+        return when (form.sellOnFillStrategy) {
+            SellStrategy.STOP_LOSS -> {
+                val sp = form.sellOnFillStopPrice.toDoubleOrNull() ?: return null
+                SellOnFillParams(orderType = "STOP", stopPrice = sp)
+            }
+            SellStrategy.TRAILING_STOP -> {
+                val offset = form.sellOnFillTrailingAmount.toDoubleOrNull() ?: return null
+                val linkType = if (form.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "PERCENT" else "VALUE"
+                SellOnFillParams(
+                    orderType = "TRAILING_STOP",
+                    trailingStopLinkType = linkType,
+                    trailingStopOffset = offset
+                )
+            }
+            SellStrategy.LIMIT -> {
+                val lp = form.sellOnFillLimitPrice.toDoubleOrNull() ?: return null
+                SellOnFillParams(orderType = "LIMIT", limitPrice = lp)
+            }
+            SellStrategy.MARKET -> null
+        }
     }
 
     private suspend fun placeSellOrder(

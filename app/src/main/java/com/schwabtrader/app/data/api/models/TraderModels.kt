@@ -170,7 +170,9 @@ data class OrderRequest(
     @SerializedName("stopPriceLinkType")
     val stopPriceLinkType: String? = null,
     @SerializedName("stopPriceOffset")
-    val stopPriceOffset: Double? = null
+    val stopPriceOffset: Double? = null,
+    @SerializedName("childOrderStrategies")
+    val childOrderStrategies: List<OrderRequest>? = null
 )
 
 data class OrderLegCollection(
