@@ -20,6 +20,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Button
@@ -90,6 +92,7 @@ fun StockDetailScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isFavorite by viewModel.isFavorite.collectAsState()
 
     LaunchedEffect(symbol) { viewModel.load(symbol) }
 
@@ -103,6 +106,13 @@ fun StockDetailScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.toggleFavorite(symbol) }) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                            contentDescription = if (isFavorite) "Remove from watchlist" else "Add to watchlist",
+                            tint = if (isFavorite) Color(0xFFFFD700) else TextSecondary
+                        )
+                    }
                     IconButton(onClick = { onNavigateToOrder(symbol, "") }) {
                         Icon(Icons.Default.ShoppingCart, contentDescription = "Buy", tint = GainGreen)
                     }

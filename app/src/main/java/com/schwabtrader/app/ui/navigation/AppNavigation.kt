@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -37,6 +38,7 @@ import com.schwabtrader.app.ui.screener.ScreenerScreen
 import com.schwabtrader.app.ui.schwabconnect.SchwabConnectScreen
 import com.schwabtrader.app.ui.schwabconnect.SchwabConnectViewModel
 import com.schwabtrader.app.ui.stockdetail.StockDetailScreen
+import com.schwabtrader.app.ui.watchlist.WatchlistScreen
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.schwabtrader.app.ui.theme.AccentBlue
 import com.schwabtrader.app.ui.theme.CardBackground
@@ -56,6 +58,7 @@ sealed class Screen(val route: String) {
     object StockDetail : Screen("stockdetail/{symbol}") {
         fun createRoute(symbol: String) = "stockdetail/$symbol"
     }
+    object Watchlist : Screen("watchlist")
 }
 
 data class BottomNavItem(
@@ -78,10 +81,11 @@ fun AppNavigation(
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Portfolio", Icons.Default.AccountBalance),
-        BottomNavItem(Screen.Screener, "Screener", Icons.Default.Search)
+        BottomNavItem(Screen.Screener, "Screener", Icons.Default.Search),
+        BottomNavItem(Screen.Watchlist, "Watchlist", Icons.Default.Star)
     )
 
-    val bottomNavRoutes = setOf(Screen.Dashboard.route, Screen.Screener.route)
+    val bottomNavRoutes = setOf(Screen.Dashboard.route, Screen.Screener.route, Screen.Watchlist.route)
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -210,6 +214,14 @@ fun AppNavigation(
                     },
                     onConnectSchwab = {
                         navController.navigate(Screen.SchwabConnect.route)
+                    }
+                )
+            }
+
+            composable(Screen.Watchlist.route) {
+                WatchlistScreen(
+                    onNavigateToDetail = { symbol ->
+                        navController.navigate(Screen.StockDetail.createRoute(symbol))
                     }
                 )
             }

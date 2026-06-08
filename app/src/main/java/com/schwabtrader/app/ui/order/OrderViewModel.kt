@@ -33,6 +33,7 @@ data class OrderFormState(
     val direction: OrderDirection = OrderDirection.BUY,
     val sellStrategy: SellStrategy = SellStrategy.MARKET,
     val stopPrice: String = "",
+    val stopLossUnit: TrailingStopUnit = TrailingStopUnit.DOLLAR,
     val trailingAmount: String = "",
     val trailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT,
     // Sell-on-fill (bracket order — only used when direction == BUY)
@@ -41,6 +42,7 @@ data class OrderFormState(
     val sellOnFillTrailingStopEnabled: Boolean = false,
     val sellOnFillLimitEnabled: Boolean = false,
     val sellOnFillStopPrice: String = "",
+    val sellOnFillStopLossUnit: TrailingStopUnit = TrailingStopUnit.DOLLAR,
     val sellOnFillTrailingAmount: String = "",
     val sellOnFillTrailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT,
     val sellOnFillLimitPrice: String = ""
@@ -131,6 +133,14 @@ class OrderViewModel @Inject constructor(
 
     fun setStopPrice(price: String) {
         _formState.value = _formState.value.copy(stopPrice = price)
+    }
+
+    fun setStopLossUnit(unit: TrailingStopUnit) {
+        _formState.value = _formState.value.copy(stopLossUnit = unit, stopPrice = "")
+    }
+
+    fun setSellOnFillStopLossUnit(unit: TrailingStopUnit) {
+        _formState.value = _formState.value.copy(sellOnFillStopLossUnit = unit, sellOnFillStopPrice = "")
     }
 
     fun setTrailingAmount(amount: String) {
@@ -247,9 +257,18 @@ class OrderViewModel @Inject constructor(
             if (form.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "PERCENT" else "VALUE"
         else null
 
+        val stopLossPrice = if (form.sellOnFillStopLossEnabled) {
+            if (form.sellOnFillStopLossUnit == TrailingStopUnit.PERCENT) {
+                val pct = form.sellOnFillStopPrice.toDoubleOrNull()
+                val cp = _currentPrice.value
+                if (pct != null && cp > 0) cp * (1.0 - pct / 100.0) else null
+            } else {
+                form.sellOnFillStopPrice.toDoubleOrNull()
+            }
+        } else null
+
         return SellOnFillConfig(
-            stopLossPrice = if (form.sellOnFillStopLossEnabled)
-                form.sellOnFillStopPrice.toDoubleOrNull() else null,
+            stopLossPrice = stopLossPrice,
             trailingLinkType = trailingLinkType,
             trailingOffset = trailingOffset,
             limitPrice = if (form.sellOnFillLimitEnabled)
@@ -284,8 +303,16 @@ class OrderViewModel @Inject constructor(
                 )
             }
             SellStrategy.STOP_LOSS -> {
-                val sp = form.stopPrice.toDoubleOrNull()
-                    ?: return Result.failure(Exception("Invalid stop price"))
+                val sp = if (form.stopLossUnit == TrailingStopUnit.PERCENT) {
+                    val pct = form.stopPrice.toDoubleOrNull()
+                        ?: return Result.failure(Exception("Invalid stop loss percent"))
+                    val cp = _currentPrice.value
+                    if (cp <= 0) return Result.failure(Exception("Current price unavailable"))
+                    cp * (1.0 - pct / 100.0)
+                } else {
+                    form.stopPrice.toDoubleOrNull()
+                        ?: return Result.failure(Exception("Invalid stop price"))
+                }
                 portfolioRepository.placeOrder(
                     accountHash = accountHash,
                     symbol = symbol,

@@ -798,6 +798,14 @@ class MarketDataRepository @Inject constructor(
         }
     }
 
+    suspend fun searchSymbols(query: String): Result<List<com.schwabtrader.app.data.api.models.InstrumentDetail>> {
+        return try {
+            Result.success(marketDataService.searchInstruments(query).instruments)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // ─── Williams DMI Screener ────────────────────────────────────────────────
 
     fun screenWilliamsDmi(index: IndexType): Flow<WilliamsDmiProgress> = flow {

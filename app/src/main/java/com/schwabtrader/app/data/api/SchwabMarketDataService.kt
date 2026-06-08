@@ -31,4 +31,10 @@ interface SchwabMarketDataService {
         @Query("symbol") symbol: String,
         @Query("projection") projection: String = "fundamental"
     ): InstrumentsResponse
+
+    @GET("instruments")
+    suspend fun searchInstruments(
+        @Query("symbol") symbol: String,
+        @Query("projection") projection: String = "symbol-search"
+    ): InstrumentsResponse
 }

@@ -136,8 +136,10 @@ fun OrderScreen(
                         when (formState.sellStrategy) {
                             SellStrategy.LIMIT ->
                                 Text("Limit Price: $${formState.limitPrice}", color = TextSecondary)
-                            SellStrategy.STOP_LOSS ->
-                                Text("Stop Price: $${formState.stopPrice}", color = TextSecondary)
+                            SellStrategy.STOP_LOSS -> {
+                                val unit = if (formState.stopLossUnit == TrailingStopUnit.PERCENT) "% below current" else "$"
+                                Text("Stop Loss: ${formState.stopPrice}$unit", color = TextSecondary)
+                            }
                             SellStrategy.TRAILING_STOP -> {
                                 val unit = if (formState.trailingUnit == TrailingStopUnit.PERCENT) "%" else "$"
                                 Text(
@@ -470,7 +472,8 @@ fun OrderScreen(
             // ── Stop loss ──────────────────────────────────────────────────────
             if (isSell && formState.sellStrategy == SellStrategy.STOP_LOSS) {
                 Spacer(modifier = Modifier.height(16.dp))
-                SectionLabel("Stop Price ($)")
+                val isStopPct = formState.stopLossUnit == TrailingStopUnit.PERCENT
+                SectionLabel(if (isStopPct) "Stop Loss (%)" else "Stop Price ($)")
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "Order sells automatically when price reaches this level. Good Till Cancelled.",
@@ -478,13 +481,29 @@ fun OrderScreen(
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TrailingStopUnit.values().forEach { unit ->
+                        val sel = formState.stopLossUnit == unit
+                        Button(
+                            onClick = { viewModel.setStopLossUnit(unit) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (sel) LossRed else SurfaceVariant,
+                                contentColor = if (sel) Color.Black else TextSecondary
+                            )
+                        ) { Text(if (unit == TrailingStopUnit.PERCENT) "% below" else "$ price", fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.labelSmall) }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = formState.stopPrice,
                     onValueChange = { viewModel.setStopPrice(it) },
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    placeholder = { Text("e.g. 145.00", color = TextSecondary) },
+                    placeholder = { Text(if (isStopPct) "e.g. 5 (5% below current)" else "e.g. 145.00", color = TextSecondary) },
                     singleLine = true,
+                    trailingIcon = if (isStopPct) {{ Text("%", color = TextSecondary, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 12.dp)) }} else null,
                     colors = TextFieldDefaults.outlinedTextFieldColors(
                         textColor = TextPrimary,
                         focusedBorderColor = LossRed,
@@ -495,15 +514,18 @@ fun OrderScreen(
                     shape = RoundedCornerShape(8.dp)
                 )
                 if (currentPrice > 0) {
-                    formState.stopPrice.toDoubleOrNull()?.let { sp ->
-                        val pct = abs((sp - currentPrice) / currentPrice * 100)
-                        val dir = if (sp < currentPrice) "below" else "above"
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            "Triggers at ${currencyFormatter.format(sp)} (${"%.1f".format(pct)}% $dir current price)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (sp < currentPrice) LossRed else GainGreen
-                        )
+                    formState.stopPrice.toDoubleOrNull()?.let { raw ->
+                        val sp = if (isStopPct) currentPrice * (1.0 - raw / 100.0) else raw
+                        if (sp > 0) {
+                            val pct = abs((sp - currentPrice) / currentPrice * 100)
+                            val dir = if (sp < currentPrice) "below" else "above"
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Triggers at ${currencyFormatter.format(sp)} (${"%.1f".format(pct)}% $dir current price)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (sp < currentPrice) LossRed else GainGreen
+                            )
+                        }
                     }
                 }
             }
@@ -648,13 +670,30 @@ fun OrderScreen(
                             )
                             if (formState.sellOnFillStopLossEnabled) {
                                 Spacer(modifier = Modifier.height(8.dp))
+                                val isSofStopPct = formState.sellOnFillStopLossUnit == TrailingStopUnit.PERCENT
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TrailingStopUnit.values().forEach { unit ->
+                                        val sel = formState.sellOnFillStopLossUnit == unit
+                                        Button(
+                                            onClick = { viewModel.setSellOnFillStopLossUnit(unit) },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (sel) LossRed else SurfaceVariant,
+                                                contentColor = if (sel) Color.Black else TextSecondary
+                                            )
+                                        ) { Text(if (unit == TrailingStopUnit.PERCENT) "% below" else "$ price", fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal, style = MaterialTheme.typography.labelSmall) }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = formState.sellOnFillStopPrice,
                                     onValueChange = { viewModel.setSellOnFillStopPrice(it) },
                                     modifier = Modifier.fillMaxWidth(),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    placeholder = { Text("Stop price", color = TextSecondary) },
+                                    placeholder = { Text(if (isSofStopPct) "e.g. 5 (5% below)" else "Stop price", color = TextSecondary) },
                                     singleLine = true,
+                                    trailingIcon = if (isSofStopPct) {{ Text("%", color = TextSecondary, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(end = 12.dp)) }} else null,
                                     colors = TextFieldDefaults.outlinedTextFieldColors(
                                         textColor = TextPrimary,
                                         focusedBorderColor = LossRed,
@@ -665,15 +704,18 @@ fun OrderScreen(
                                     shape = RoundedCornerShape(8.dp)
                                 )
                                 if (currentPrice > 0) {
-                                    formState.sellOnFillStopPrice.toDoubleOrNull()?.let { sp ->
-                                        val pct = abs((sp - currentPrice) / currentPrice * 100)
-                                        val dir = if (sp < currentPrice) "below" else "above"
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            "${currencyFormatter.format(sp)} — ${"%.1f".format(pct)}% $dir ${currencyFormatter.format(currentPrice)}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (sp < currentPrice) LossRed else GainGreen
-                                        )
+                                    formState.sellOnFillStopPrice.toDoubleOrNull()?.let { raw ->
+                                        val sp = if (isSofStopPct) currentPrice * (1.0 - raw / 100.0) else raw
+                                        if (sp > 0) {
+                                            val pct = abs((sp - currentPrice) / currentPrice * 100)
+                                            val dir = if (sp < currentPrice) "below" else "above"
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                "${currencyFormatter.format(sp)} — ${"%.1f".format(pct)}% $dir ${currencyFormatter.format(currentPrice)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (sp < currentPrice) LossRed else GainGreen
+                                            )
+                                        }
                                     }
                                 }
                             }

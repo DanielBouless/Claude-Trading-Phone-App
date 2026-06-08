@@ -72,6 +72,8 @@ data class InstrumentsResponse(
 data class InstrumentDetail(
     @SerializedName("symbol") val symbol: String = "",
     @SerializedName("description") val description: String = "",
+    @SerializedName("assetType") val assetType: String = "",
+    @SerializedName("exchange") val exchange: String = "",
     @SerializedName("fundamental") val fundamental: FundamentalData? = null
 )
 
