@@ -10,13 +10,16 @@ import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class SellOnFillParams(
-    val orderType: String,              // "STOP", "TRAILING_STOP", "LIMIT"
-    val limitPrice: Double? = null,
-    val stopPrice: Double? = null,
-    val trailingStopLinkType: String? = null,   // "PERCENT" or "VALUE"
-    val trailingStopOffset: Double? = null
-)
+data class SellOnFillConfig(
+    val stopLossPrice: Double? = null,
+    val trailingLinkType: String? = null,   // "PERCENT" or "VALUE"
+    val trailingOffset: Double? = null,
+    val limitPrice: Double? = null
+) {
+    val isEmpty: Boolean get() = stopLossPrice == null &&
+        (trailingLinkType == null || trailingOffset == null) &&
+        limitPrice == null
+}
 
 data class Portfolio(
     val totalValue: Double,
@@ -142,28 +145,13 @@ class PortfolioRepository @Inject constructor(
         trailingStopLinkType: String? = null,
         trailingStopOffset: Double? = null,
         duration: String = "DAY",
-        sellOnFill: SellOnFillParams? = null
+        sellOnFill: SellOnFillConfig? = null
     ): Result<Unit> {
         return try {
-            val childOrder = sellOnFill?.let { s ->
-                OrderRequest(
-                    orderType = s.orderType,
-                    orderStrategyType = "SINGLE",
-                    duration = "GTC",
-                    price = if (s.orderType == "LIMIT") s.limitPrice else null,
-                    stopPrice = if (s.orderType == "STOP") s.stopPrice else null,
-                    stopPriceLinkBasis = if (s.orderType == "TRAILING_STOP") "BID" else null,
-                    stopPriceLinkType = s.trailingStopLinkType,
-                    stopPriceOffset = s.trailingStopOffset,
-                    orderLegCollection = listOf(
-                        OrderLegCollection(
-                            instruction = "SELL",
-                            quantity = quantity,
-                            instrument = OrderInstrument(symbol = symbol, assetType = "EQUITY")
-                        )
-                    )
-                )
-            }
+            val childOrder = if (sellOnFill != null && !sellOnFill.isEmpty) {
+                buildExitOrder(sellOnFill, symbol, quantity)
+            } else null
+
             val orderRequest = OrderRequest(
                 orderType = orderType,
                 orderStrategyType = if (childOrder != null) "TRIGGER" else "SINGLE",
@@ -190,6 +178,52 @@ class PortfolioRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private fun buildExitOrder(config: SellOnFillConfig, symbol: String, quantity: Double): OrderRequest? {
+        val sellLeg = OrderLegCollection("SELL", quantity, OrderInstrument(symbol))
+        val orders = mutableListOf<OrderRequest>()
+
+        config.stopLossPrice?.let { sp ->
+            orders += OrderRequest(
+                orderType = "STOP",
+                orderStrategyType = "SINGLE",
+                duration = "GTC",
+                stopPrice = sp,
+                orderLegCollection = listOf(sellLeg)
+            )
+        }
+        if (config.trailingLinkType != null && config.trailingOffset != null) {
+            orders += OrderRequest(
+                orderType = "TRAILING_STOP",
+                orderStrategyType = "SINGLE",
+                duration = "GTC",
+                stopPriceLinkBasis = "BID",
+                stopPriceLinkType = config.trailingLinkType,
+                stopPriceOffset = config.trailingOffset,
+                orderLegCollection = listOf(sellLeg)
+            )
+        }
+        config.limitPrice?.let { lp ->
+            orders += OrderRequest(
+                orderType = "LIMIT",
+                orderStrategyType = "SINGLE",
+                duration = "GTC",
+                price = lp,
+                orderLegCollection = listOf(sellLeg)
+            )
+        }
+
+        return when (orders.size) {
+            0 -> null
+            1 -> orders.first()
+            else -> OrderRequest(     // OCO wraps multiple exit orders
+                orderType = "MARKET",
+                orderStrategyType = "OCO",
+                orderLegCollection = emptyList(),
+                childOrderStrategies = orders
+            )
         }
     }
 

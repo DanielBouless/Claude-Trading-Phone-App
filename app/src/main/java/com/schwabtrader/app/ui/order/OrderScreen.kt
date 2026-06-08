@@ -156,17 +156,14 @@ fun OrderScreen(
                             Divider(color = SurfaceVariant)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text("Exit Strategy (on fill):", color = TextPrimary, fontWeight = FontWeight.SemiBold)
-                            when (formState.sellOnFillStrategy) {
-                                SellStrategy.STOP_LOSS ->
-                                    Text("Stop Loss at $${formState.sellOnFillStopPrice}", color = LossRed)
-                                SellStrategy.TRAILING_STOP -> {
-                                    val u = if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "%" else "$"
-                                    Text("Trailing Stop: ${formState.sellOnFillTrailingAmount}$u", color = LossRed)
-                                }
-                                SellStrategy.LIMIT ->
-                                    Text("Limit Sell at $${formState.sellOnFillLimitPrice}", color = GainGreen)
-                                else -> {}
+                            if (formState.sellOnFillStopLossEnabled && formState.sellOnFillStopPrice.isNotBlank())
+                                Text("Stop Loss at $${formState.sellOnFillStopPrice}", color = LossRed)
+                            if (formState.sellOnFillTrailingStopEnabled && formState.sellOnFillTrailingAmount.isNotBlank()) {
+                                val u = if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "%" else "$"
+                                Text("Trailing Stop: ${formState.sellOnFillTrailingAmount}$u", color = LossRed)
                             }
+                            if (formState.sellOnFillLimitEnabled && formState.sellOnFillLimitPrice.isNotBlank())
+                                Text("Limit Sell at $${formState.sellOnFillLimitPrice}", color = GainGreen)
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -635,179 +632,169 @@ fun OrderScreen(
                             Spacer(modifier = Modifier.height(14.dp))
 
                             // Strategy selector (3 options — no Market)
-                            SectionLabel("Sell Strategy")
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                listOf(
-                                    SellStrategy.STOP_LOSS to "Stop Loss",
-                                    SellStrategy.TRAILING_STOP to "Trailing",
-                                    SellStrategy.LIMIT to "Limit"
-                                ).forEach { (strategy, label) ->
-                                    val selected = formState.sellOnFillStrategy == strategy
-                                    Button(
-                                        onClick = { viewModel.setSellOnFillStrategy(strategy) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (selected) LossRed else SurfaceVariant,
-                                            contentColor = if (selected) Color.Black else TextSecondary
-                                        ),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 8.dp)
-                                    ) {
+                            Text(
+                                "Enable any combination — active strategies form an OCO order (one fills, rest cancel).",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = TextSecondary
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // ── Stop Loss ──────────────────────────────────────
+                            ExitStrategyRow(
+                                label = "Stop Loss",
+                                enabled = formState.sellOnFillStopLossEnabled,
+                                onToggle = { viewModel.toggleSellOnFillStopLoss(it) }
+                            )
+                            if (formState.sellOnFillStopLossEnabled) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = formState.sellOnFillStopPrice,
+                                    onValueChange = { viewModel.setSellOnFillStopPrice(it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    placeholder = { Text("Stop price", color = TextSecondary) },
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        textColor = TextPrimary,
+                                        focusedBorderColor = LossRed,
+                                        unfocusedBorderColor = SurfaceVariant,
+                                        cursorColor = LossRed,
+                                        containerColor = SurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                if (currentPrice > 0) {
+                                    formState.sellOnFillStopPrice.toDoubleOrNull()?.let { sp ->
+                                        val pct = abs((sp - currentPrice) / currentPrice * 100)
+                                        val dir = if (sp < currentPrice) "below" else "above"
+                                        Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            label,
-                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                            style = MaterialTheme.typography.labelSmall
+                                            "${currencyFormatter.format(sp)} — ${"%.1f".format(pct)}% $dir ${currencyFormatter.format(currentPrice)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (sp < currentPrice) LossRed else GainGreen
                                         )
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                            when (formState.sellOnFillStrategy) {
-                                SellStrategy.STOP_LOSS -> {
-                                    SectionLabel("Stop Price ($)")
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = formState.sellOnFillStopPrice,
-                                        onValueChange = { viewModel.setSellOnFillStopPrice(it) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        placeholder = { Text("e.g. 145.00", color = TextSecondary) },
-                                        singleLine = true,
-                                        colors = TextFieldDefaults.outlinedTextFieldColors(
-                                            textColor = TextPrimary,
-                                            focusedBorderColor = LossRed,
-                                            unfocusedBorderColor = SurfaceVariant,
-                                            cursorColor = LossRed,
-                                            containerColor = SurfaceVariant
-                                        ),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    if (currentPrice > 0) {
-                                        formState.sellOnFillStopPrice.toDoubleOrNull()?.let { sp ->
-                                            val pct = abs((sp - currentPrice) / currentPrice * 100)
-                                            val dir = if (sp < currentPrice) "below" else "above"
+                            // ── Trailing Stop ──────────────────────────────────
+                            ExitStrategyRow(
+                                label = "Trailing Stop",
+                                enabled = formState.sellOnFillTrailingStopEnabled,
+                                onToggle = { viewModel.toggleSellOnFillTrailingStop(it) }
+                            )
+                            if (formState.sellOnFillTrailingStopEnabled) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    TrailingStopUnit.values().forEach { unit ->
+                                        val sel = formState.sellOnFillTrailingUnit == unit
+                                        Button(
+                                            onClick = { viewModel.setSellOnFillTrailingUnit(unit) },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (sel) LossRed else SurfaceVariant,
+                                                contentColor = if (sel) Color.Black else TextSecondary
+                                            )
+                                        ) {
+                                            Text(
+                                                if (unit == TrailingStopUnit.PERCENT) "%" else "$",
+                                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = formState.sellOnFillTrailingAmount,
+                                    onValueChange = { viewModel.setSellOnFillTrailingAmount(it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    placeholder = {
+                                        Text(
+                                            if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "e.g. 5" else "e.g. 10.00",
+                                            color = TextSecondary
+                                        )
+                                    },
+                                    singleLine = true,
+                                    trailingIcon = {
+                                        Text(
+                                            if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "%" else "$",
+                                            color = TextSecondary,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            modifier = Modifier.padding(end = 12.dp)
+                                        )
+                                    },
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        textColor = TextPrimary,
+                                        focusedBorderColor = LossRed,
+                                        unfocusedBorderColor = SurfaceVariant,
+                                        cursorColor = LossRed,
+                                        containerColor = SurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                if (currentPrice > 0) {
+                                    formState.sellOnFillTrailingAmount.toDoubleOrNull()?.let { amt ->
+                                        val trigger = if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT)
+                                            currentPrice * (1 - amt / 100)
+                                        else currentPrice - amt
+                                        if (trigger > 0) {
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Text(
-                                                "Triggers at ${currencyFormatter.format(sp)} (${"%.1f".format(pct)}% $dir ${currencyFormatter.format(currentPrice)})",
+                                                "Initial trigger ≈ ${currencyFormatter.format(trigger)} from ${currencyFormatter.format(currentPrice)}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = if (sp < currentPrice) LossRed else GainGreen
+                                                color = LossRed
                                             )
                                         }
                                     }
                                 }
+                            }
 
-                                SellStrategy.TRAILING_STOP -> {
-                                    SectionLabel("Trailing Amount")
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        TrailingStopUnit.values().forEach { unit ->
-                                            val selected = formState.sellOnFillTrailingUnit == unit
-                                            Button(
-                                                onClick = { viewModel.setSellOnFillTrailingUnit(unit) },
-                                                modifier = Modifier.weight(1f),
-                                                shape = RoundedCornerShape(8.dp),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = if (selected) LossRed else SurfaceVariant,
-                                                    contentColor = if (selected) Color.Black else TextSecondary
-                                                )
-                                            ) {
-                                                Text(
-                                                    if (unit == TrailingStopUnit.PERCENT) "%" else "$",
-                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = formState.sellOnFillTrailingAmount,
-                                        onValueChange = { viewModel.setSellOnFillTrailingAmount(it) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        placeholder = {
-                                            Text(
-                                                if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "e.g. 5" else "e.g. 10.00",
-                                                color = TextSecondary
-                                            )
-                                        },
-                                        singleLine = true,
-                                        trailingIcon = {
-                                            Text(
-                                                if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "%" else "$",
-                                                color = TextSecondary,
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                modifier = Modifier.padding(end = 12.dp)
-                                            )
-                                        },
-                                        colors = TextFieldDefaults.outlinedTextFieldColors(
-                                            textColor = TextPrimary,
-                                            focusedBorderColor = LossRed,
-                                            unfocusedBorderColor = SurfaceVariant,
-                                            cursorColor = LossRed,
-                                            containerColor = SurfaceVariant
-                                        ),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    if (currentPrice > 0) {
-                                        formState.sellOnFillTrailingAmount.toDoubleOrNull()?.let { amt ->
-                                            val trigger = if (formState.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT)
-                                                currentPrice * (1 - amt / 100)
-                                            else currentPrice - amt
-                                            if (trigger > 0) {
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Text(
-                                                    "Initial trigger ≈ ${currencyFormatter.format(trigger)} from ${currencyFormatter.format(currentPrice)}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = LossRed
-                                                )
-                                            }
-                                        }
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // ── Limit Sell ─────────────────────────────────────
+                            ExitStrategyRow(
+                                label = "Limit Sell",
+                                enabled = formState.sellOnFillLimitEnabled,
+                                onToggle = { viewModel.toggleSellOnFillLimit(it) }
+                            )
+                            if (formState.sellOnFillLimitEnabled) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = formState.sellOnFillLimitPrice,
+                                    onValueChange = { viewModel.setSellOnFillLimitPrice(it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    placeholder = { Text("Limit sell price", color = TextSecondary) },
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        textColor = TextPrimary,
+                                        focusedBorderColor = GainGreen,
+                                        unfocusedBorderColor = SurfaceVariant,
+                                        cursorColor = GainGreen,
+                                        containerColor = SurfaceVariant
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                if (currentPrice > 0) {
+                                    formState.sellOnFillLimitPrice.toDoubleOrNull()?.let { lp ->
+                                        val pct = ((lp - currentPrice) / currentPrice) * 100
+                                        val sign = if (pct >= 0) "+" else ""
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            "Sell target: $sign${"%.1f".format(pct)}% vs ${currencyFormatter.format(currentPrice)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (pct >= 0) GainGreen else LossRed
+                                        )
                                     }
                                 }
-
-                                SellStrategy.LIMIT -> {
-                                    SectionLabel("Limit Sell Price ($)")
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = formState.sellOnFillLimitPrice,
-                                        onValueChange = { viewModel.setSellOnFillLimitPrice(it) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        placeholder = { Text("e.g. 175.00", color = TextSecondary) },
-                                        singleLine = true,
-                                        colors = TextFieldDefaults.outlinedTextFieldColors(
-                                            textColor = TextPrimary,
-                                            focusedBorderColor = GainGreen,
-                                            unfocusedBorderColor = SurfaceVariant,
-                                            cursorColor = GainGreen,
-                                            containerColor = SurfaceVariant
-                                        ),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    if (currentPrice > 0) {
-                                        formState.sellOnFillLimitPrice.toDoubleOrNull()?.let { lp ->
-                                            val pct = ((lp - currentPrice) / currentPrice) * 100
-                                            val sign = if (pct >= 0) "+" else ""
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                "Sell target: $sign${"%.1f".format(pct)}% vs ${currencyFormatter.format(currentPrice)}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (pct >= 0) GainGreen else LossRed
-                                            )
-                                        }
-                                    }
-                                }
-
-                                else -> {}
                             }
                         }
                     }
@@ -958,4 +945,28 @@ private fun SectionLabel(text: String) {
         color = TextSecondary,
         fontWeight = FontWeight.Medium
     )
+}
+
+@Composable
+private fun ExitStrategyRow(label: String, enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (enabled) TextPrimary else TextSecondary,
+            fontWeight = if (enabled) FontWeight.SemiBold else FontWeight.Normal
+        )
+        androidx.compose.material3.Switch(
+            checked = enabled,
+            onCheckedChange = onToggle,
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = LossRed,
+                checkedTrackColor = LossRed.copy(alpha = 0.4f)
+            )
+        )
+    }
 }

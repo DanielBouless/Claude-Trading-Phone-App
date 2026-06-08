@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.schwabtrader.app.data.repository.MarketDataRepository
 import com.schwabtrader.app.data.repository.PortfolioRepository
-import com.schwabtrader.app.data.repository.SellOnFillParams
+import com.schwabtrader.app.data.repository.SellOnFillConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,11 +37,13 @@ data class OrderFormState(
     val trailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT,
     // Sell-on-fill (bracket order — only used when direction == BUY)
     val addSellOnFill: Boolean = false,
-    val sellOnFillStrategy: SellStrategy = SellStrategy.STOP_LOSS,
-    val sellOnFillLimitPrice: String = "",
+    val sellOnFillStopLossEnabled: Boolean = false,
+    val sellOnFillTrailingStopEnabled: Boolean = false,
+    val sellOnFillLimitEnabled: Boolean = false,
     val sellOnFillStopPrice: String = "",
     val sellOnFillTrailingAmount: String = "",
-    val sellOnFillTrailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT
+    val sellOnFillTrailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT,
+    val sellOnFillLimitPrice: String = ""
 )
 
 @HiltViewModel
@@ -144,8 +146,16 @@ class OrderViewModel @Inject constructor(
         _formState.value = _formState.value.copy(addSellOnFill = enabled)
     }
 
-    fun setSellOnFillStrategy(strategy: SellStrategy) {
-        _formState.value = _formState.value.copy(sellOnFillStrategy = strategy)
+    fun toggleSellOnFillStopLoss(enabled: Boolean) {
+        _formState.value = _formState.value.copy(sellOnFillStopLossEnabled = enabled)
+    }
+
+    fun toggleSellOnFillTrailingStop(enabled: Boolean) {
+        _formState.value = _formState.value.copy(sellOnFillTrailingStopEnabled = enabled)
+    }
+
+    fun toggleSellOnFillLimit(enabled: Boolean) {
+        _formState.value = _formState.value.copy(sellOnFillLimitEnabled = enabled)
     }
 
     fun setSellOnFillLimitPrice(price: String) {
@@ -217,7 +227,7 @@ class OrderViewModel @Inject constructor(
                 ?: return Result.failure(Exception("Invalid limit price"))
         } else null
 
-        val sellOnFill = if (form.addSellOnFill) buildSellOnFillParams(form) else null
+        val sellOnFill = if (form.addSellOnFill) buildSellOnFillConfig(form) else null
 
         return portfolioRepository.placeOrder(
             accountHash = accountHash,
@@ -230,27 +240,21 @@ class OrderViewModel @Inject constructor(
         )
     }
 
-    private fun buildSellOnFillParams(form: OrderFormState): SellOnFillParams? {
-        return when (form.sellOnFillStrategy) {
-            SellStrategy.STOP_LOSS -> {
-                val sp = form.sellOnFillStopPrice.toDoubleOrNull() ?: return null
-                SellOnFillParams(orderType = "STOP", stopPrice = sp)
-            }
-            SellStrategy.TRAILING_STOP -> {
-                val offset = form.sellOnFillTrailingAmount.toDoubleOrNull() ?: return null
-                val linkType = if (form.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "PERCENT" else "VALUE"
-                SellOnFillParams(
-                    orderType = "TRAILING_STOP",
-                    trailingStopLinkType = linkType,
-                    trailingStopOffset = offset
-                )
-            }
-            SellStrategy.LIMIT -> {
-                val lp = form.sellOnFillLimitPrice.toDoubleOrNull() ?: return null
-                SellOnFillParams(orderType = "LIMIT", limitPrice = lp)
-            }
-            SellStrategy.MARKET -> null
-        }
+    private fun buildSellOnFillConfig(form: OrderFormState): SellOnFillConfig {
+        val trailingOffset = if (form.sellOnFillTrailingStopEnabled)
+            form.sellOnFillTrailingAmount.toDoubleOrNull() else null
+        val trailingLinkType = if (trailingOffset != null)
+            if (form.sellOnFillTrailingUnit == TrailingStopUnit.PERCENT) "PERCENT" else "VALUE"
+        else null
+
+        return SellOnFillConfig(
+            stopLossPrice = if (form.sellOnFillStopLossEnabled)
+                form.sellOnFillStopPrice.toDoubleOrNull() else null,
+            trailingLinkType = trailingLinkType,
+            trailingOffset = trailingOffset,
+            limitPrice = if (form.sellOnFillLimitEnabled)
+                form.sellOnFillLimitPrice.toDoubleOrNull() else null
+        )
     }
 
     private suspend fun placeSellOrder(
