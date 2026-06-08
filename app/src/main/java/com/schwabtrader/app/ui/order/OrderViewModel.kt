@@ -19,13 +19,21 @@ sealed class OrderUiState {
 }
 
 enum class OrderType { MARKET, LIMIT }
+enum class OrderDirection { BUY, SELL }
+enum class SellStrategy { MARKET, LIMIT, STOP_LOSS, TRAILING_STOP }
+enum class TrailingStopUnit { PERCENT, DOLLAR }
 
 data class OrderFormState(
     val quantity: String = "1",
     val orderType: OrderType = OrderType.MARKET,
     val limitPrice: String = "",
     val showConfirmDialog: Boolean = false,
-    val dollarAmount: String = ""
+    val dollarAmount: String = "",
+    val direction: OrderDirection = OrderDirection.BUY,
+    val sellStrategy: SellStrategy = SellStrategy.MARKET,
+    val stopPrice: String = "",
+    val trailingAmount: String = "",
+    val trailingUnit: TrailingStopUnit = TrailingStopUnit.PERCENT
 )
 
 @HiltViewModel
@@ -58,7 +66,6 @@ class OrderViewModel @Inject constructor(
             marketDataRepository.getQuotes(listOf(symbol)).onSuccess { quotes ->
                 val price = quotes[symbol]?.lastPrice ?: 0.0
                 _currentPrice.value = price
-                // Sync dollar amount for the default quantity once price arrives
                 val qty = _formState.value.quantity.toDoubleOrNull() ?: 0.0
                 if (qty > 0 && price > 0) {
                     _formState.value = _formState.value.copy(
@@ -71,23 +78,23 @@ class OrderViewModel @Inject constructor(
 
     private fun loadAccounts() {
         viewModelScope.launch {
-            val result = portfolioRepository.getAccounts()
-            if (result.isSuccess) {
-                val accountList = result.getOrThrow().map { acc ->
+            portfolioRepository.getAccounts().onSuccess { list ->
+                _accounts.value = list.map { acc ->
                     val hash = acc.securitiesAccount.accountNumber
                     Pair(hash, "Account ...${hash.takeLast(4)}")
                 }
-                _accounts.value = accountList
             }
         }
+    }
+
+    fun setDirection(direction: OrderDirection) {
+        _formState.value = _formState.value.copy(direction = direction)
     }
 
     fun setQuantity(quantity: String) {
         val price = _currentPrice.value
         val dollars = if (price > 0) {
-            quantity.toDoubleOrNull()?.let { qty ->
-                if (qty > 0) "%.2f".format(qty * price) else ""
-            } ?: ""
+            quantity.toDoubleOrNull()?.let { if (it > 0) "%.2f".format(it * price) else "" } ?: ""
         } else _formState.value.dollarAmount
         _formState.value = _formState.value.copy(quantity = quantity, dollarAmount = dollars)
     }
@@ -95,9 +102,7 @@ class OrderViewModel @Inject constructor(
     fun setDollarAmount(amount: String) {
         val price = _currentPrice.value
         val shares = if (price > 0) {
-            amount.toDoubleOrNull()?.let { d ->
-                if (d > 0) formatShares(d / price) else ""
-            } ?: ""
+            amount.toDoubleOrNull()?.let { if (it > 0) formatShares(it / price) else "" } ?: ""
         } else _formState.value.quantity
         _formState.value = _formState.value.copy(dollarAmount = amount, quantity = shares)
     }
@@ -106,8 +111,24 @@ class OrderViewModel @Inject constructor(
         _formState.value = _formState.value.copy(orderType = orderType)
     }
 
+    fun setSellStrategy(strategy: SellStrategy) {
+        _formState.value = _formState.value.copy(sellStrategy = strategy)
+    }
+
     fun setLimitPrice(price: String) {
         _formState.value = _formState.value.copy(limitPrice = price)
+    }
+
+    fun setStopPrice(price: String) {
+        _formState.value = _formState.value.copy(stopPrice = price)
+    }
+
+    fun setTrailingAmount(amount: String) {
+        _formState.value = _formState.value.copy(trailingAmount = amount)
+    }
+
+    fun setTrailingUnit(unit: TrailingStopUnit) {
+        _formState.value = _formState.value.copy(trailingUnit = unit)
     }
 
     fun setSelectedAccountIndex(index: Int) {
@@ -131,25 +152,8 @@ class OrderViewModel @Inject constructor(
             return
         }
 
-        val orderTypeStr = when (form.orderType) {
-            OrderType.MARKET -> "MARKET"
-            OrderType.LIMIT -> "LIMIT"
-        }
-
-        val limitPrice = if (form.orderType == OrderType.LIMIT) {
-            form.limitPrice.toDoubleOrNull()
-        } else null
-
-        if (form.orderType == OrderType.LIMIT && limitPrice == null) {
-            _uiState.value = OrderUiState.Error("Invalid limit price")
-            return
-        }
-
-        val targetAccountHash = if (accountHash.isNotBlank()) {
-            accountHash
-        } else {
-            _accounts.value.getOrNull(_selectedAccountIndex.value)?.first ?: ""
-        }
+        val targetAccountHash = if (accountHash.isNotBlank()) accountHash
+        else _accounts.value.getOrNull(_selectedAccountIndex.value)?.first ?: ""
 
         if (targetAccountHash.isBlank()) {
             _uiState.value = OrderUiState.Error("No account selected")
@@ -159,27 +163,93 @@ class OrderViewModel @Inject constructor(
         _uiState.value = OrderUiState.Loading
 
         viewModelScope.launch {
-            val result = portfolioRepository.placeOrder(
-                accountHash = targetAccountHash,
+            val result = if (form.direction == OrderDirection.BUY) {
+                placeBuyOrder(symbol, quantity, form, targetAccountHash)
+            } else {
+                placeSellOrder(symbol, quantity, form, targetAccountHash)
+            }
+            _uiState.value = if (result.isSuccess) OrderUiState.Success
+            else OrderUiState.Error(result.exceptionOrNull()?.message ?: "Order placement failed")
+        }
+    }
+
+    private suspend fun placeBuyOrder(
+        symbol: String,
+        quantity: Double,
+        form: OrderFormState,
+        accountHash: String
+    ): Result<Unit> {
+        val limitPrice = if (form.orderType == OrderType.LIMIT) {
+            form.limitPrice.toDoubleOrNull()
+                ?: return Result.failure(Exception("Invalid limit price"))
+        } else null
+        return portfolioRepository.placeOrder(
+            accountHash = accountHash,
+            symbol = symbol,
+            quantity = quantity,
+            orderType = if (form.orderType == OrderType.LIMIT) "LIMIT" else "MARKET",
+            instruction = "BUY",
+            limitPrice = limitPrice
+        )
+    }
+
+    private suspend fun placeSellOrder(
+        symbol: String,
+        quantity: Double,
+        form: OrderFormState,
+        accountHash: String
+    ): Result<Unit> = when (form.sellStrategy) {
+        SellStrategy.MARKET -> portfolioRepository.placeOrder(
+            accountHash = accountHash,
+            symbol = symbol,
+            quantity = quantity,
+            orderType = "MARKET",
+            instruction = "SELL"
+        )
+        SellStrategy.LIMIT -> {
+            val lp = form.limitPrice.toDoubleOrNull()
+                ?: return Result.failure(Exception("Invalid limit price"))
+            portfolioRepository.placeOrder(
+                accountHash = accountHash,
                 symbol = symbol,
                 quantity = quantity,
-                orderType = orderTypeStr,
-                limitPrice = limitPrice
+                orderType = "LIMIT",
+                instruction = "SELL",
+                limitPrice = lp
             )
-            if (result.isSuccess) {
-                _uiState.value = OrderUiState.Success
-            } else {
-                _uiState.value = OrderUiState.Error(
-                    result.exceptionOrNull()?.message ?: "Order placement failed"
-                )
-            }
+        }
+        SellStrategy.STOP_LOSS -> {
+            val sp = form.stopPrice.toDoubleOrNull()
+                ?: return Result.failure(Exception("Invalid stop price"))
+            portfolioRepository.placeOrder(
+                accountHash = accountHash,
+                symbol = symbol,
+                quantity = quantity,
+                orderType = "STOP",
+                instruction = "SELL",
+                stopPrice = sp,
+                duration = "GTC"
+            )
+        }
+        SellStrategy.TRAILING_STOP -> {
+            val offset = form.trailingAmount.toDoubleOrNull()
+                ?: return Result.failure(Exception("Invalid trailing amount"))
+            val linkType = if (form.trailingUnit == TrailingStopUnit.PERCENT) "PERCENT" else "VALUE"
+            portfolioRepository.placeOrder(
+                accountHash = accountHash,
+                symbol = symbol,
+                quantity = quantity,
+                orderType = "TRAILING_STOP",
+                instruction = "SELL",
+                trailingStopLinkType = linkType,
+                trailingStopOffset = offset,
+                duration = "GTC"
+            )
         }
     }
 
     fun clearError() {
-        if (_uiState.value is OrderUiState.Error) {
-            _uiState.value = OrderUiState.Idle
-        }
+        if (_uiState.value is OrderUiState.Error) _uiState.value = OrderUiState.Idle
     }
 
     fun getEstimatedCost(): Double {

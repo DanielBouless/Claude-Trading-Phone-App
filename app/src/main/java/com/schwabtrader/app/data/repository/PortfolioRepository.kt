@@ -128,15 +128,25 @@ class PortfolioRepository @Inject constructor(
         symbol: String,
         quantity: Double,
         orderType: String,
-        limitPrice: Double? = null
+        instruction: String = "BUY",
+        limitPrice: Double? = null,
+        stopPrice: Double? = null,
+        trailingStopLinkType: String? = null,
+        trailingStopOffset: Double? = null,
+        duration: String = "DAY"
     ): Result<Unit> {
         return try {
             val orderRequest = OrderRequest(
                 orderType = orderType,
+                duration = duration,
                 price = if (orderType == "LIMIT") limitPrice else null,
+                stopPrice = if (orderType == "STOP") stopPrice else null,
+                stopPriceLinkBasis = if (orderType == "TRAILING_STOP") "BID" else null,
+                stopPriceLinkType = trailingStopLinkType,
+                stopPriceOffset = trailingStopOffset,
                 orderLegCollection = listOf(
                     OrderLegCollection(
-                        instruction = "BUY",
+                        instruction = instruction,
                         quantity = quantity,
                         instrument = OrderInstrument(symbol = symbol, assetType = "EQUITY")
                     )

@@ -162,7 +162,15 @@ data class OrderRequest(
     @SerializedName("orderLegCollection")
     val orderLegCollection: List<OrderLegCollection>,
     @SerializedName("price")
-    val price: Double? = null
+    val price: Double? = null,
+    @SerializedName("stopPrice")
+    val stopPrice: Double? = null,
+    @SerializedName("stopPriceLinkBasis")
+    val stopPriceLinkBasis: String? = null,
+    @SerializedName("stopPriceLinkType")
+    val stopPriceLinkType: String? = null,
+    @SerializedName("stopPriceOffset")
+    val stopPriceOffset: Double? = null
 )
 
 data class OrderLegCollection(
